@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tidebreaker</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./node_modules/three/build/three.module.js",
+        "three/addons/": "./node_modules/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <canvas id="c"></canvas>
+
+    <div id="hud" hidden>
+      <div id="hud-pos"><span id="pos-num">1</span><span id="pos-suf">st</span></div>
+      <div id="hud-top">
+        <div id="hud-lap">LAP <b id="lap-num">1</b><span id="lap-total">/3</span></div>
+        <div id="time-total">0:00.00</div>
+      </div>
+      <div id="lap-times"></div>
+      <div id="hud-speed">
+        <div id="speed-val">0</div>
+        <div class="unit">KM/H</div>
+        <div id="power" title="Power"></div>
+      </div>
+      <div id="hud-miss"><span>MISSES</span><div id="miss-dots"></div></div>
+      <canvas id="minimap" width="200" height="200"></canvas>
+      <div id="hud-msg"></div>
+      <div id="hud-sub"></div>
+      <div id="hud-trick"></div>
+    </div>
+
+    <div id="menu"></div>
+    <div id="loading">Loading…</div>
+  </div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

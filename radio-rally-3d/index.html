@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>R.C. Pro-Am 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+<style>
+  :root { --red: #e53935; --yellow: #ffd600; --ink: #111; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: #fff;
+    font-family: 'Press Start 2P', ui-monospace, Menlo, Consolas, monospace; user-select: none; }
+  canvas#game { display: block; width: 100vw; height: 100vh; }
+  .hidden { display: none !important; }
+  .shadow { text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #pos { position: absolute; left: 20px; top: 16px; font-size: 44px; color: var(--yellow); }
+  #pos small { font-size: 20px; }
+  #lap { position: absolute; left: 22px; top: 76px; font-size: 16px; }
+  #time { position: absolute; left: 22px; top: 102px; font-size: 12px; color: #ddd; }
+  #minimap { position: absolute; right: 16px; top: 16px; width: 180px; height: 180px;
+    background: rgba(0,0,0,0.45); border: 3px solid #fff; border-radius: 6px; }
+  #ammo { position: absolute; left: 20px; bottom: 20px; display: flex; gap: 14px; }
+  .ammo { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.55); border: 3px solid #fff;
+    padding: 8px 12px; border-radius: 6px; font-size: 16px; }
+  .ammo i { font-style: normal; font-size: 10px; color: #bbb; }
+  #letters { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; gap: 4px;
+    background: rgba(0,0,0,0.55); border: 3px solid #fff; padding: 8px 10px; border-radius: 6px; }
+  #letters span { width: 22px; text-align: center; font-size: 16px; color: #555; }
+  #letters span.on { color: var(--yellow); text-shadow: 0 0 8px #ff9800; }
+  #gauges { position: absolute; right: 20px; bottom: 20px; background: rgba(0,0,0,0.55); border: 3px solid #fff;
+    padding: 10px 12px; border-radius: 6px; font-size: 9px; width: 220px; }
+  .gauge { display: flex; align-items: center; justify-content: space-between; margin: 4px 0; }
+  .pips { display: flex; gap: 3px; }
+  .pips b { width: 12px; height: 10px; background: #333; display: block; }
+  .pips b.on { background: var(--yellow); }
+  #speedbar { height: 12px; background: #333; margin-top: 8px; position: relative; }
+  #speedfill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #43a047, #ffd600, #e53935); }
+  #msg { position: absolute; left: 0; right: 0; top: 34%; text-align: center; font-size: 64px; color: var(--yellow); }
+  #submsg { position: absolute; left: 0; right: 0; top: 50%; text-align: center; font-size: 18px; }
+  #toasts { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; }
+  .toast { font-size: 16px; margin: 6px; animation: toast 1.6s ease-out forwards; }
+  @keyframes toast { 0% { transform: scale(0.4); opacity: 0; } 12% { transform: scale(1.15); opacity: 1; } 25% { transform: scale(1); } 80% { opacity: 1; } 100% { transform: translateY(-40px); opacity: 0; } }
+  #lights { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); display: flex; gap: 16px;
+    background: #222; border: 4px solid #fff; padding: 12px 18px; border-radius: 12px; }
+  #lights b { width: 42px; height: 42px; border-radius: 50%; background: #400; display: block; }
+  #lights b.red { background: #ff1744; box-shadow: 0 0 20px #ff1744; }
+  #lights b.green { background: #00e676; box-shadow: 0 0 20px #00e676; }
+  #wrongway { position: absolute; left: 0; right: 0; top: 60%; text-align: center; font-size: 28px; color: #ff5252; animation: blink 0.5s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; background: radial-gradient(ellipse at center, rgba(0,0,0,0.35), rgba(0,0,0,0.8)); padding: 20px; }
+  .logo { font-size: clamp(34px, 7vw, 86px); color: var(--red); line-height: 1.15;
+    text-shadow: 5px 5px 0 #fff, 9px 9px 0 #000; letter-spacing: 2px; transform: rotate(-4deg); }
+  .logo span { color: var(--yellow); }
+  .tag { margin-top: 30px; font-size: 14px; color: #fff; }
+  .press { margin-top: 44px; font-size: 18px; color: var(--yellow); animation: blink 1s steps(2) infinite; }
+  .controls { margin-top: 38px; font-size: 10px; line-height: 2.1; color: #ddd; background: rgba(0,0,0,0.5);
+    border: 3px solid #fff; border-radius: 8px; padding: 14px 22px; text-align: left; }
+  .controls b { color: var(--yellow); font-weight: normal; }
+  .panel { background: rgba(10,10,30,0.85); border: 4px solid #fff; border-radius: 10px; padding: 28px 36px; min-width: min(560px, 92vw); }
+  .panel h1 { margin: 0 0 8px; font-size: 26px; color: var(--yellow); }
+  .panel h2 { margin: 0 0 22px; font-size: 13px; color: #ccc; font-weight: normal; }
+  table.results { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.results td { padding: 10px 8px; text-align: left; }
+  table.results tr.me td { color: var(--yellow); }
+  table.results td.sw { width: 26px; }
+  table.results td.sw b { display: block; width: 20px; height: 20px; border: 2px solid #fff; }
+  .verdict { margin-top: 24px; font-size: 18px; }
+  .good { color: #69f0ae; }
+  .bad { color: #ff5252; }
+  .stats { margin-top: 16px; font-size: 11px; color: #ccc; line-height: 2; }
+  #touch { position: fixed; inset: auto 0 0 0; display: none; justify-content: space-between; align-items: flex-end;
+    padding: 0 16px 16px; pointer-events: none; }
+  #touch .grp { display: flex; gap: 12px; align-items: flex-end; }
+  #touch button { pointer-events: auto; touch-action: none; font: inherit; font-size: 12px; color: #fff;
+    width: 72px; height: 72px; border-radius: 50%; border: 3px solid #fff; background: rgba(0,0,0,0.45); }
+  #touch button:active { background: rgba(255,214,0,0.55); }
+  #touch button.gas { width: 88px; height: 88px; background: rgba(229,57,53,0.55); }
+  #touch-start, #touch-next { display: none; }
+  #hud.hidden ~ #touch { display: none; }
+  @media (pointer: coarse) {
+    #touch { display: flex; }
+    #touch-start { display: inline-block; pointer-events: auto; margin-top: 28px; font: inherit; font-size: 14px;
+      color: #111; background: var(--yellow); border: 3px solid #fff; padding: 14px 22px; border-radius: 8px; }
+    #ammo, #letters, #gauges { bottom: 120px; }
+    #touch-next { display: inline-block; }
+    .controls { display: none; }
+  }
+  @media (max-width: 720px) {
+    #pos { font-size: 30px; left: 16px; } #pos small { font-size: 14px; }
+    #lap { top: 56px; left: 16px; font-size: 11px; } #time { top: 76px; left: 16px; font-size: 9px; }
+    #minimap { width: 110px; height: 110px; right: 16px; }
+    #ammo { left: 16px; gap: 6px; } .ammo { padding: 6px 8px; font-size: 11px; } .ammo i { display: none; }
+    #letters { display: none; }
+    #gauges { right: 16px; width: 150px; padding: 6px 8px; font-size: 7px; }
+    .pips b { width: 8px; }
+    #msg { font-size: 36px; }
+    .panel { padding: 18px; } .panel h1 { font-size: 18px; }
+    table.results { font-size: 10px; }
+    .controls { font-size: 8px; padding: 10px 12px; }
+    #lights b { width: 28px; height: 28px; }
+  }
+  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+</style>
+<script type="importmap">
+  { "imports": { "three": "./node_modules/three/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="loading">LOADING…</div>
+
+<div id="hud" class="hidden">
+  <div id="pos" class="shadow">4<small>TH</small></div>
+  <div id="lap" class="shadow">LAP 1/3</div>
+  <div id="time" class="shadow">0:00.00</div>
+  <canvas id="minimap" width="180" height="180"></canvas>
+  <div id="ammo">
+    <div class="ammo"><span style="color:#ff5252">▲</span><span id="missiles">0</span><i>SPACE</i></div>
+    <div class="ammo"><span>●</span><span id="bombs">0</span><i>SHIFT</i></div>
+  </div>
+  <div id="letters"></div>
+  <div id="gauges">
+    <div class="gauge">ENGINE <div class="pips" id="pip-engine"></div></div>
+    <div class="gauge">TIRES <div class="pips" id="pip-tires"></div></div>
+    <div class="gauge">BATTERY <div class="pips" id="pip-battery"></div></div>
+    <div id="speedbar"><div id="speedfill"></div></div>
+  </div>
+  <div id="lights" class="hidden"><b></b><b></b><b></b></div>
+  <div id="msg" class="shadow"></div>
+  <div id="submsg" class="shadow"></div>
+  <div id="toasts"></div>
+  <div id="wrongway" class="shadow hidden">WRONG WAY!</div>
+</div>
+
+<div id="title" class="screen hidden">
+  <div class="logo">R.C. PRO-AM<br><span>3D</span></div>
+  <div class="tag">RADIO-CONTROLLED OFF-ROAD RACING</div>
+  <div class="press">PRESS ENTER</div>
+  <button id="touch-start" data-action="confirm" type="button">TAP TO RACE</button>
+  <div class="controls">
+    <b>↑ / W / X</b> ACCELERATE &nbsp; <b>↓ / S / Z</b> BRAKE<br>
+    <b>← →  / A D</b> STEER<br>
+    <b>SPACE / C</b> FIRE MISSILE &nbsp; <b>SHIFT / B</b> DROP BOMB<br>
+    <b>V</b> CAMERA &nbsp; <b>M</b> MUTE &nbsp; <b>P</b> PAUSE<br>
+    FINISH IN THE TOP 3 TO ADVANCE. COLLECT N-I-N-T-E-N-D-O!
+  </div>
+</div>
+
+<div id="intro" class="screen hidden" style="background:none;justify-content:flex-start;padding-top:12vh">
+  <div class="panel" style="min-width:0">
+    <h2 id="intro-round">RACE 1</h2>
+    <h1 id="intro-name">TRACK</h1>
+    <h2 id="intro-laps" style="margin:0">3 LAPS</h2>
+  </div>
+</div>
+
+<div id="results" class="screen hidden">
+  <div class="panel">
+    <h1 id="res-title">RESULTS</h1>
+    <h2 id="res-track"></h2>
+    <table class="results" id="res-table"></table>
+    <div class="verdict" id="res-verdict"></div>
+    <div class="stats" id="res-stats"></div>
+    <div class="press" style="margin-top:24px;font-size:14px">PRESS ENTER</div>
+    <button id="touch-next" data-action="confirm" type="button" style="pointer-events:auto;margin-top:16px;font:inherit;font-size:12px;padding:12px 18px;background:#ffd600;color:#111;border:3px solid #fff;border-radius:8px">CONTINUE</button>
+  </div>
+</div>
+
+<div id="pause" class="screen hidden">
+  <div class="panel"><h1>PAUSED</h1><h2 style="margin:0">P TO RESUME</h2></div>
+</div>
+
+<div id="touch" aria-hidden="true">
+  <div class="grp"><button type="button" data-action="left">◀</button><button type="button" data-action="right">▶</button></div>
+  <div class="grp"><button type="button" data-action="bomb">BOMB</button><button type="button" data-action="fire">FIRE</button><button type="button" data-action="down">BRK</button><button type="button" class="gas" data-action="up">GAS</button></div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "rc-pro-am-3d",
+  "version": "1.0.0",
+  "description": "RC Pro-Am style racer in WebGL",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "validate": "node tools/validate-tracks.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "type": "module"
+}

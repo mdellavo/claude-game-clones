@@ -1,0 +1,147 @@
+<meta charset="utf-8">
+<title>Polygon Wing</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,700;1,700&family=Silkscreen&display=swap">
+<style>
+  :root {
+    --void: #070a1c;
+    --hull: #e6e9f0;
+    --signal: #7dffb0;
+    --amber: #ffc23d;
+    --hot: #ff5a3c;
+    --steel: #8a93b8;
+    --panel: rgba(8, 12, 34, 0.74);
+    --line: rgba(125, 255, 176, 0.35);
+    --px: "Silkscreen", "Courier New", monospace;
+    --sans: "Chakra Petch", system-ui, sans-serif;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; background: var(--void); color: var(--hull); overflow: hidden; font-family: var(--sans); }
+  body { touch-action: none; user-select: none; -webkit-user-select: none; }
+  #stage { position: fixed; inset: 0; }
+  #view { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+  .hud { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px calc(14px + env(safe-area-inset-bottom, 0px)); font-family: var(--px); }
+  .row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+  .row.top { align-items: flex-start; }
+  .label { font-size: 11px; letter-spacing: 0.12em; color: var(--steel); }
+  .big { font-size: 22px; color: var(--hull); font-variant-numeric: tabular-nums; text-shadow: 2px 2px 0 #000; }
+  .gauge { width: min(34vw, 200px); height: 12px; border: 2px solid var(--hull); background: rgba(0,0,0,.5); padding: 2px; box-sizing: border-box; }
+  .gauge i { display: block; height: 100%; width: 100%; background: var(--signal); transition: width .12s linear; }
+  #shieldFill.low { background: var(--hot); animation: blink .4s steps(2) infinite; }
+  #boostFill { background: var(--amber); }
+  @keyframes blink { 50% { opacity: .35; } }
+  .right { text-align: right; }
+  #bombs { color: var(--hot); letter-spacing: 4px; }
+
+  #bossWrap { flex: 1; max-width: 320px; margin: 0 auto; text-align: center; }
+  #bossWrap .gauge { width: 100%; border-color: var(--hot); }
+  #bossFill { background: var(--hot); }
+
+  #comm { display: flex; gap: 10px; align-items: center; background: var(--panel); border: 2px solid var(--line); padding: 8px 12px 8px 8px;
+    max-width: 420px; min-height: 56px; box-sizing: border-box; transform: translateY(8px); opacity: 0; transition: opacity .15s, transform .15s; }
+  #comm.on { opacity: 1; transform: none; }
+  #portrait { width: 48px; height: 48px; flex: none; image-rendering: pixelated; border: 2px solid var(--hull); }
+  #commName { font-size: 11px; letter-spacing: .14em; }
+  #commText { font-family: var(--sans); font-weight: 500; font-size: 15px; line-height: 1.3; }
+
+  #flash { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 45%, rgba(255,60,40,.55)); opacity: 0; transition: opacity .25s; }
+
+  .screen { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px 16px; box-sizing: border-box;
+    background: radial-gradient(ellipse at 50% 60%, rgba(7,10,28,.35), rgba(7,10,28,.85)); }
+  .card { max-width: 560px; width: 100%; text-align: center; display: grid; gap: 18px; justify-items: center; }
+  .eyebrow { font-family: var(--px); font-size: 12px; letter-spacing: .3em; color: var(--signal); }
+  h1 { margin: 0; font-style: italic; font-weight: 700; font-size: clamp(44px, 11vw, 92px); line-height: .9; letter-spacing: -.02em; text-wrap: balance;
+    color: var(--hull); text-shadow: 4px 4px 0 #2f5fe0, 8px 8px 0 rgba(0,0,0,.6); }
+  h2 { margin: 0; font-style: italic; font-weight: 700; font-size: clamp(34px, 8vw, 60px); text-shadow: 3px 3px 0 #2f5fe0; }
+  .lede { margin: 0; color: var(--steel); font-size: 16px; max-width: 42ch; }
+  .keys { display: grid; grid-template-columns: auto auto; gap: 6px 18px; font-size: 14px; text-align: left; }
+  .keys kbd { font-family: var(--px); font-size: 11px; color: var(--amber); white-space: nowrap; }
+  .btn { pointer-events: auto; font: 700 italic 20px var(--sans); color: var(--void); background: var(--signal); border: 0; padding: 12px 34px; cursor: pointer;
+    box-shadow: 4px 4px 0 #2f5fe0; letter-spacing: .04em; }
+  .btn:hover { background: #b6ffd2; }
+  .btn:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
+  .stats { font-family: var(--px); font-size: 13px; display: grid; grid-template-columns: auto auto; gap: 6px 24px; font-variant-numeric: tabular-nums; }
+  .stats b { color: var(--amber); font-weight: 400; text-align: right; }
+  .hint { font-family: var(--px); font-size: 10px; color: var(--steel); letter-spacing: .1em; }
+
+  #touch { position: absolute; right: 16px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(2, 64px); gap: 10px; }
+  #touch button { pointer-events: auto; width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--hull); background: rgba(8,12,34,.55);
+    color: var(--hull); font: 11px var(--px); }
+  #touch button:active { background: var(--signal); color: var(--void); }
+
+  @media (max-width: 560px) {
+    .row.bottom { flex-wrap: wrap; }
+    #comm { order: -1; flex-basis: 100%; max-width: none; }
+    .big { font-size: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #shieldFill.low { animation: none; } #comm { transition: none; } }
+</style>
+
+<div id="stage">
+  <canvas id="view"></canvas>
+  <div id="flash"></div>
+
+  <div class="hud" id="hud" hidden>
+    <div class="row top">
+      <div><div class="label">HITS</div><div class="big" id="hits">000</div></div>
+      <div id="bossWrap" hidden><div class="label">WARDEN</div><div class="gauge"><i id="bossFill"></i></div></div>
+      <div class="right"><div class="label">BOMBS</div><div class="big" id="bombs">◆◆◆</div></div>
+    </div>
+    <div class="row bottom">
+      <div><div class="label">SHIELD</div><div class="gauge"><i id="shieldFill"></i></div></div>
+      <div id="comm"><canvas id="portrait" width="16" height="16"></canvas><div><div class="label" id="commName">KESTREL</div><div id="commText"></div></div></div>
+      <div class="right"><div class="label">BOOST</div><div class="gauge"><i id="boostFill"></i></div></div>
+    </div>
+  </div>
+
+  <div id="touch" hidden>
+    <button id="tBomb" type="button">BOMB</button>
+    <button id="tRoll" type="button">ROLL</button>
+    <button id="tBrake" type="button">BRAKE</button>
+    <button id="tBoost" type="button">BOOST</button>
+  </div>
+
+  <div class="screen" id="title">
+    <div class="card">
+      <div class="eyebrow">SECTOR ALPHA · SORTIE 01</div>
+      <h1>Polygon Wing</h1>
+      <p class="lede">Lead the Lancer squadron down the canyon lane, clear the interceptor screen, and break the Warden carrier before it reaches orbit.</p>
+      <div class="keys">
+        <kbd>ARROWS / WASD</kbd><span>Fly</span>
+        <kbd>SPACE / J</kbd><span>Fire lasers</span>
+        <kbd>SHIFT / K</kbd><span>Boost</span>
+        <kbd>C / L</kbd><span>Brake</span>
+        <kbd>Q / E</kbd><span>Barrel roll — deflects shots</span>
+        <kbd>B</kbd><span>Nova bomb</span>
+        <kbd>P · M</kbd><span>Pause · Mute</span>
+      </div>
+      <button class="btn" id="startBtn" type="button">Launch</button>
+      <div class="hint" id="hiScore">BEST 000</div>
+    </div>
+  </div>
+
+  <div class="screen" id="over" hidden>
+    <div class="card">
+      <div class="eyebrow" id="overEyebrow">SIGNAL LOST</div>
+      <h2 id="overTitle">Lancer Down</h2>
+      <div class="stats">
+        <span>HITS</span><b id="sHits">0</b>
+        <span>ACCURACY</span><b id="sAcc">0%</b>
+        <span>SHIELD LEFT</span><b id="sShield">0%</b>
+        <span>BEST</span><b id="sBest">0</b>
+      </div>
+      <button class="btn" id="retryBtn" type="button">Fly Again</button>
+    </div>
+  </div>
+
+  <div class="screen" id="paused" hidden>
+    <div class="card"><h2>Paused</h2><div class="hint">PRESS P TO RESUME</div></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="core.js"></script>
+<script src="game.js"></script>

@@ -1,0 +1,24 @@
+# Clones
+
+Browser remakes of classic games, one per subdirectory. Each one is published as a playable artifact on claude.ai.
+
+| Game | Description | Play | Screenshots |
+| --- | --- | --- | --- |
+| **Balloon Fight**<br>`balloon-fight/` | A remake of the 1984 NES arcade game. Flap over rivals to pop their balloons, stay out of the water, and reach the glowing perch to zap the sky. Procedural graphics and jsfxr sound effects. | [claude.ai](https://claude.ai/artifact/HTYvj1cEbTeAMAfVvph4Xu) | <img src="screenshots/balloon-fight-1.jpg" width="200"> <img src="screenshots/balloon-fight-2.jpg" width="200"> <img src="screenshots/balloon-fight-3.jpg" width="200"> |
+| **Hollowmere**<br>`hollowmere/` | A gothic action RPG in the style of *Diablo*. Go down through the crypts beneath a drowned parish with click-to-walk combat, Soulfire and Requiem spells, blood and wax potions, and a character ledger. | [claude.ai](https://claude.ai/artifact/8TDep6fsj2rwpRtd8Gqs7F) | <img src="screenshots/hollowmere-1.jpg" width="200"> <img src="screenshots/hollowmere-2.jpg" width="200"> <img src="screenshots/hollowmere-3.jpg" width="200"> |
+| **Polygon Wing**<br>`polygon-wing/` | A rail shooter in the style of *Star Fox*. Lead the Lancer squadron down a canyon, barrel-roll to deflect shots, use boost, brake and nova bombs, and take down the Warden carrier. | [claude.ai](https://claude.ai/artifact/Ln6RLYrcfee1RzavWucQV2) | <img src="screenshots/polygon-wing-1.jpg" width="200"> <img src="screenshots/polygon-wing-2.jpg" width="200"> <img src="screenshots/polygon-wing-3.jpg" width="200"> |
+| **Radio Rally 3D**<br>`radio-rally-3d/` | A three.js remake of *R.C. Pro-Am*. Race RC trucks across 6 themed tracks, fire missiles and drop bombs, collect upgrades, and finish in the top 3 to advance. | [claude.ai](https://claude.ai/artifact/BrYaqAMRhTCiadaWU75ytZ) | <img src="screenshots/radio-rally-3d-1.jpg" width="200"> <img src="screenshots/radio-rally-3d-2.jpg" width="200"> <img src="screenshots/radio-rally-3d-3.jpg" width="200"> |
+| **Tidebreaker**<br>`tide-breaker/` | An arcade jet-ski racer in the style of *Wave Race 64*, with simulated waves, buoy slaloms, AI rivals and a 3-lap championship. | [claude.ai](https://claude.ai/artifact/MxmA414vzk6wMkjQfhVSs9) | <img src="screenshots/tide-breaker-1.jpg" width="200"> <img src="screenshots/tide-breaker-2.jpg" width="200"> <img src="screenshots/tide-breaker-3.jpg" width="200"> |
+| **X-COM: Crash Site Recovery**<br>`xcom/` | The tactical battlescape from *UFO: Enemy Unknown* (1994). Fight turn-based UFO crash-site missions on destructible voxel maps, with time units, reaction fire, fog of war, a persistent squad and alien AI. | [claude.ai](https://claude.ai/artifact/5szGFVCsB7wENEoHuBRweQ) | <img src="screenshots/xcom-1.jpg" width="200"> <img src="screenshots/xcom-2.jpg" width="200"> <img src="screenshots/xcom-3.jpg" width="200"> |
+| **Zelda Isometric**<br>`zelda/` | *The Legend of Zelda* rebuilt as an isometric 3D voxel world. Explore the overworld, caves and the first dungeon, and switch to a classic top-down camera at any time. | [claude.ai](https://claude.ai/artifact/TwG1RXJhuovV8pANoYuLep) | <img src="screenshots/zelda-1.jpg" width="200"> <img src="screenshots/zelda-2.jpg" width="200"> <img src="screenshots/zelda-3.jpg" width="200"> |
+| **Zenithian Chronicles**<br>`zenithian-chronicles/` | A retro JRPG inspired by *Dragon Quest*. Explore towns, caves and an overworld, fight turn-based battles, gather five heroes, master the elements, and defeat the Dragon Lord. Progress saves automatically. | [claude.ai](https://claude.ai/artifact/YNVvekSzYdBRB77HFaL3nj) | <img src="screenshots/zenithian-chronicles-1.jpg" width="200"> <img src="screenshots/zenithian-chronicles-2.jpg" width="200"> <img src="screenshots/zenithian-chronicles-3.jpg" width="200"> |
+
+## Running locally
+
+Most games use ES modules, so serve them over HTTP instead of opening the files directly:
+
+```sh
+cd <game> && python3 -m http.server 8080
+```
+
+`xcom/` and `zelda/` use Vite. Run `npm install && npm run dev` in those folders. `balloon-fight/` is empty locally, so only the claude.ai version exists.

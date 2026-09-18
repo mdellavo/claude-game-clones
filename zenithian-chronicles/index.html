@@ -1,0 +1,1826 @@
+<title>Zenithian Chronicles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=VT323&display=swap">
+<style>
+:root{
+  --ink:#14101f;
+  --panel:#201a30;
+  --panel2:#2a2240;
+  --line:#3f3560;
+  --parchment:#f2e6c9;
+  --muted:#a99bc4;
+  --gold:#e0b64d;
+  --gold-dim:#8a6a2a;
+  --ember:#e0704a;
+  --sage:#8fc088;
+  --sky:#6fa0e6;
+}
+*{box-sizing:border-box;}
+body{
+  background:var(--ink);
+  color:var(--parchment);
+  font-family:'VT323',monospace;
+  margin:0;
+  padding-block:20px;
+  display:flex;
+  justify-content:center;
+}
+#app{
+  width:100%;
+  max-width:560px;
+  padding:0 16px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+h1,h2,h3{font-family:'Cinzel',serif;text-wrap:balance;margin:0;}
+.brand{
+  text-align:center;
+  color:var(--gold);
+  font-size:2.1rem;
+  font-weight:900;
+  letter-spacing:2px;
+  text-shadow:0 0 18px rgba(224,182,77,.35);
+}
+.brand small{
+  display:block;
+  font-family:'VT323',monospace;
+  color:var(--muted);
+  font-size:1rem;
+  letter-spacing:3px;
+  margin-top:4px;
+}
+button{
+  font-family:'VT323',monospace;
+  font-size:1.15rem;
+  background:var(--panel2);
+  color:var(--parchment);
+  border:2px solid var(--line);
+  border-radius:6px;
+  padding:8px 14px;
+  cursor:pointer;
+  letter-spacing:.5px;
+}
+button:hover{border-color:var(--gold);color:var(--gold);}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+button:disabled{opacity:.4;cursor:default;border-color:var(--line);color:var(--muted);}
+button.primary{background:linear-gradient(180deg,#3a2e5c,#241d38);border-color:var(--gold-dim);color:var(--gold);}
+button.primary:hover{border-color:var(--gold);}
+input[type="text"]{
+  font-family:'VT323',monospace;
+  font-size:1.2rem;
+  background:var(--ink);
+  color:var(--parchment);
+  border:2px solid var(--line);
+  border-radius:6px;
+  padding:8px 10px;
+  width:100%;
+}
+input[type="text"]:focus-visible{outline:2px solid var(--gold);}
+
+/* ---- title screen ---- */
+#titleScreen{
+  background:var(--panel);
+  border:2px solid var(--line);
+  border-radius:10px;
+  padding:22px 18px 26px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  align-items:center;
+}
+#titleArt{
+  width:100%;
+  max-width:420px;
+  aspect-ratio:16/7;
+  border-radius:8px;
+  border:2px solid var(--line);
+}
+.titleRow{display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px;}
+.help{
+  color:var(--muted);
+  font-size:1.05rem;
+  line-height:1.5;
+  text-align:center;
+  max-width:380px;
+}
+.help b{color:var(--parchment);}
+#howto{
+  background:var(--ink);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px 14px;
+  width:100%;
+  max-width:380px;
+  color:var(--muted);
+  font-size:1.05rem;
+  line-height:1.55;
+}
+#howto b{color:var(--gold);}
+
+/* ---- game shell ---- */
+#gameWrap{display:flex;flex-direction:column;gap:10px;}
+#topbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  color:var(--gold);
+  font-family:'Cinzel',serif;
+  font-size:1rem;
+  letter-spacing:1px;
+  flex-wrap:wrap;
+  gap:6px;
+}
+#topbar .goldct{color:var(--parchment);font-family:'VT323',monospace;font-size:1.15rem;}
+#stage{
+  position:relative;
+  width:100%;
+  max-width:480px;
+  aspect-ratio:480/320;
+  margin:0 auto;
+  border:3px solid var(--line);
+  border-radius:8px;
+  overflow:hidden;
+  background:#000;
+}
+#gameCanvas{
+  width:100%;
+  height:100%;
+  display:block;
+  image-rendering:pixelated;
+}
+.overlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  pointer-events:none;
+}
+.overlay.top{justify-content:flex-start;}
+.overlay.center{justify-content:center;align-items:center;}
+#toast{
+  position:absolute;
+  top:8px;left:50%;transform:translateX(-50%);
+  background:rgba(20,16,31,.88);
+  border:1px solid var(--gold-dim);
+  color:var(--gold);
+  padding:4px 12px;
+  border-radius:6px;
+  font-size:1rem;
+  letter-spacing:1px;
+  pointer-events:none;
+}
+#dialogueBox{
+  pointer-events:auto;
+  margin:8px;
+  background:rgba(20,16,31,.94);
+  border:2px solid var(--gold-dim);
+  border-radius:8px;
+  padding:10px 14px 12px;
+  min-height:64px;
+}
+#dialogueName{color:var(--gold);font-size:1.05rem;letter-spacing:1px;margin-bottom:2px;}
+#dialogueText{font-size:1.25rem;line-height:1.35;color:var(--parchment);white-space:pre-wrap;}
+#dialogueHint{text-align:right;color:var(--muted);font-size:.95rem;margin-top:2px;}
+
+.panel{
+  pointer-events:auto;
+  margin:8px;
+  background:rgba(20,16,31,.96);
+  border:2px solid var(--line);
+  border-radius:8px;
+  padding:10px;
+  max-height:calc(100% - 16px);
+  overflow-y:auto;
+  font-size:1.1rem;
+}
+.panel h3{color:var(--gold);font-size:1.05rem;letter-spacing:1px;margin-bottom:6px;}
+.tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.tabs button{padding:4px 10px;font-size:1rem;}
+.tabs button.active{border-color:var(--gold);color:var(--gold);}
+.listitem{
+  display:flex;justify-content:space-between;gap:8px;
+  padding:6px 8px;border-radius:5px;border:1px solid transparent;
+  cursor:pointer;
+}
+.listitem:hover,.listitem.sel{border-color:var(--gold-dim);background:rgba(224,182,77,.08);}
+.listitem .l{color:var(--parchment);}
+.listitem .r{color:var(--muted);}
+.statline{display:flex;justify-content:space-between;font-size:1.05rem;color:var(--muted);padding:2px 4px;}
+.statline b{color:var(--parchment);font-weight:normal;}
+.barwrap{background:#000;border:1px solid var(--line);border-radius:3px;height:9px;width:100%;overflow:hidden;}
+.bar{height:100%;}
+.bar.hp{background:linear-gradient(90deg,#3f8f4a,var(--sage));}
+.bar.mp{background:linear-gradient(90deg,#3a6fbf,var(--sky));}
+.charCard{border:1px solid var(--line);border-radius:6px;padding:8px;margin-bottom:8px;}
+.charCard .top{display:flex;justify-content:space-between;color:var(--gold);font-size:1.05rem;}
+.small{font-size:.95rem;color:var(--muted);}
+
+/* ---- HUD ---- */
+#hud{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(96px,1fr));
+  gap:6px;
+}
+.hudCard{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:5px 7px;
+  font-size:.95rem;
+}
+.hudCard.dead{opacity:.4;}
+.hudCard .nm{color:var(--gold);display:flex;justify-content:space-between;}
+.hudCard .nm span.lv{color:var(--muted);}
+
+/* ---- controls ---- */
+#controls{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  user-select:none;
+}
+#dpad{
+  display:grid;
+  grid-template-columns:repeat(3,44px);
+  grid-template-rows:repeat(3,44px);
+  gap:3px;
+}
+#dpad button{padding:0;font-size:1.2rem;display:flex;align-items:center;justify-content:center;}
+.actionBtns{display:flex;gap:10px;align-items:center;}
+.actionBtns button{width:56px;height:56px;border-radius:50%;font-family:'Cinzel',serif;font-weight:700;}
+#btnA{color:var(--gold);border-color:var(--gold-dim);}
+#btnMenu{width:auto;height:auto;border-radius:6px;padding:8px 12px;font-size:1rem;}
+
+@media (max-width:420px){
+  #dpad{grid-template-columns:repeat(3,38px);grid-template-rows:repeat(3,38px);}
+  .actionBtns button{width:48px;height:48px;}
+}
+
+[hidden]{display:none!important;}
+</style>
+
+<div id="app">
+  <div id="titleScreen">
+    <canvas id="titleArt" width="420" height="184"></canvas>
+    <div class="brand">Zenithian Chronicles<small>a legend reforged</small></div>
+    <div class="help">An original tribute to the golden age of console role-playing &mdash; <b>gather five heroes</b>, <b>master the elements</b>, and cast down the Dragon Lord who has darkened the realm of Aldan.</div>
+    <div class="titleRow" id="newGameRow">
+      <input type="text" id="nameInput" maxlength="12" placeholder="Name your hero (e.g. Aldric)">
+      <button class="primary" id="btnNewGame">Begin a New Legend</button>
+      <button id="btnContinue" hidden>Continue Your Journey</button>
+    </div>
+    <div id="howto">
+      <b>Move:</b> Arrow keys / WASD / on-screen pad&nbsp; <b>Confirm:</b> Z / Enter / A button&nbsp; <b>Cancel/Menu:</b> X / Esc / B button&nbsp;<br>
+      Walk into townsfolk to talk, into chests to open them, and into tall grass or cave floors at your own risk. Your progress auto-saves as you travel.
+    </div>
+  </div>
+
+  <div id="gameWrap" hidden>
+    <div id="topbar">
+      <span id="locName">&mdash;</span>
+      <span class="goldct">&#9830; <span id="goldCt">0</span> gold</span>
+    </div>
+    <div id="stage">
+      <canvas id="gameCanvas" width="480" height="320"></canvas>
+      <div id="toast" hidden></div>
+
+      <div class="overlay" id="dialogueLayer" hidden>
+        <div id="dialogueBox">
+          <div id="dialogueName"></div>
+          <div id="dialogueText"></div>
+          <div id="dialogueHint">&#9660; press confirm</div>
+        </div>
+      </div>
+
+      <div class="overlay center" id="menuLayer" hidden>
+        <div class="panel" style="width:92%;">
+          <div class="tabs" id="menuTabs"></div>
+          <div id="menuBody"></div>
+        </div>
+      </div>
+
+      <div class="overlay center" id="shopLayer" hidden>
+        <div class="panel" style="width:92%;">
+          <h3 id="shopTitle">Shop</h3>
+          <div class="tabs" id="shopTabs"></div>
+          <div id="shopBody"></div>
+        </div>
+      </div>
+
+      <div class="overlay" id="battleLayer" hidden>
+        <div class="panel" id="battlePanel" style="margin:8px;">
+          <div id="battleLog" class="small" style="min-height:2.6em;margin-bottom:8px;line-height:1.3;"></div>
+          <div id="battleBody"></div>
+        </div>
+      </div>
+
+      <div class="overlay center" id="bigMsgLayer" hidden>
+        <div class="panel" style="width:88%;text-align:center;">
+          <h3 id="bigMsgTitle">&mdash;</h3>
+          <div id="bigMsgBody" class="small" style="margin:8px 0;line-height:1.5;"></div>
+          <button class="primary" id="bigMsgBtn">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="hud"></div>
+
+    <div id="controls">
+      <div id="dpad">
+        <div></div><button id="dU">&#9650;</button><div></div>
+        <button id="dL">&#9664;</button><div></div><button id="dR">&#9654;</button>
+        <div></div><button id="dD">&#9660;</button><div></div>
+      </div>
+      <div class="actionBtns">
+        <button id="btnMenu">Menu</button>
+        <button id="btnB">B</button>
+        <button id="btnA">A</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================
+   ZENITHIAN CHRONICLES - a self-contained retro RPG
+   ========================================================= */
+
+const TILE=32, VIEW_W=15, VIEW_H=10;
+
+/* ---------- palette helpers ---------- */
+const COL={
+  void:"#0c0916", grass:"#3c6b3f", grass2:"#345f38", path:"#7a6440",
+  forest:"#20452b", forestDark:"#173420", water:"#2c5a86", waterDark:"#1f4468",
+  mountain:"#5d5a63", mountainDark:"#413f47", bridge:"#8a6a40", sand:"#c9a25f", sandDark:"#b4894a",
+  wall:"#2a2240", wallEdge:"#3f3560", floor:"#392f52", floorAlt:"#332a49", exit:"#caa24a",
+  townMark:"#c9713c", castleMark:"#9aa5c9", caveMark:"#171018", passMark:"#cdeaf5", dragonMark:"#7b1e2b"
+};
+
+/* ---------- tile & sprite atlases (Kenney Roguelike/RPG Pack + 0x72 DungeonTilesetII, both CC0) ---------- */
+const overworldImg=new Image(); overworldImg.src="assets/overworld.png";
+const dungeonImg=new Image(); dungeonImg.src="assets/dungeon.png";
+let assetsReady=0;
+overworldImg.onload=()=>{assetsReady++;};
+dungeonImg.onload=()=>{assetsReady++; try{ drawTitleArt(); }catch(e){}};
+function kt(col,row){ return [col*17,row*17,16,16]; }
+const KTILES={
+  grass:kt(5,0), grass2:kt(5,0), dirt:kt(6,0), sand:kt(8,0), water:kt(0,4),
+  mountain:kt(6,16), treePine:kt(16,9), treePine2:kt(18,9), treeRound:kt(16,9)
+};
+const DUNGEON_ATLAS={big_demon_idle_anim_f0:[16,428,32,36],big_demon_idle_anim_f1:[48,428,32,36],big_demon_idle_anim_f2:[80,428,32,36],big_demon_idle_anim_f3:[112,428,32,36],big_demon_run_anim_f0:[144,428,32,36],big_demon_run_anim_f1:[176,428,32,36],big_demon_run_anim_f2:[208,428,32,36],big_demon_run_anim_f3:[240,428,32,36],big_zombie_idle_anim_f0:[16,332,32,36],big_zombie_idle_anim_f1:[48,332,32,36],big_zombie_idle_anim_f2:[80,332,32,36],big_zombie_idle_anim_f3:[112,332,32,36],big_zombie_run_anim_f0:[144,332,32,36],big_zombie_run_anim_f1:[176,332,32,36],big_zombie_run_anim_f2:[208,332,32,36],big_zombie_run_anim_f3:[240,332,32,36],bomb_f0:[288,320,16,16],bomb_f1:[304,320,16,16],bomb_f2:[320,320,16,16],chest_empty_open_anim_f0:[304,400,16,16],chest_empty_open_anim_f1:[320,400,16,16],chest_empty_open_anim_f2:[336,400,16,16],chest_full_open_anim_f0:[304,416,16,16],chest_full_open_anim_f1:[320,416,16,16],chest_full_open_anim_f2:[336,416,16,16],chest_mimic_open_anim_f0:[304,432,16,16],chest_mimic_open_anim_f1:[320,432,16,16],chest_mimic_open_anim_f2:[336,432,16,16],coin_anim_f0:[289,385,6,7],coin_anim_f1:[297,385,6,7],coin_anim_f2:[305,385,6,7],coin_anim_f3:[313,385,6,7],flask_big_blue:[304,336,16,16],flask_big_red:[288,336,16,16],flask_big_green:[320,336,16,16],flask_big_yellow:[336,336,16,16],flask_blue:[304,352,16,16],flask_red:[288,352,16,16],flask_green:[320,352,16,16],flask_yellow:[336,352,16,16],wizzard_f_hit_anim_f0:[256,132,16,28],wizzard_f_idle_anim_f0:[128,132,16,28],wizzard_f_idle_anim_f1:[144,132,16,28],wizzard_f_idle_anim_f2:[160,132,16,28],wizzard_f_idle_anim_f3:[176,132,16,28],wizzard_f_run_anim_f0:[192,132,16,28],wizzard_f_run_anim_f1:[208,132,16,28],wizzard_f_run_anim_f2:[224,132,16,28],wizzard_f_run_anim_f3:[240,132,16,28],wizzard_m_hit_anim_f0:[256,164,16,28],wizzard_m_idle_anim_f0:[128,164,16,28],wizzard_m_idle_anim_f1:[144,164,16,28],wizzard_m_idle_anim_f2:[160,164,16,28],wizzard_m_idle_anim_f3:[176,164,16,28],wizzard_m_run_anim_f0:[192,164,16,28],wizzard_m_run_anim_f1:[208,164,16,28],wizzard_m_run_anim_f2:[224,164,16,28],wizzard_m_run_anim_f3:[240,164,16,28],dwarf_m_idle_anim_f0:[128,292,16,28],imp_idle_anim_f0:[368,64,16,16],imp_idle_anim_f1:[384,64,16,16],imp_idle_anim_f2:[400,64,16,16],imp_idle_anim_f3:[416,64,16,16],imp_run_anim_f0:[432,64,16,16],imp_run_anim_f1:[448,64,16,16],imp_run_anim_f2:[464,64,16,16],imp_run_anim_f3:[480,64,16,16],lizard_f_hit_anim_f0:[256,196,16,28],lizard_f_idle_anim_f0:[128,196,16,28],lizard_f_idle_anim_f1:[144,196,16,28],lizard_f_idle_anim_f2:[160,196,16,28],lizard_f_idle_anim_f3:[176,196,16,28],lizard_f_run_anim_f0:[192,196,16,28],lizard_f_run_anim_f1:[208,196,16,28],lizard_f_run_anim_f2:[224,196,16,28],lizard_f_run_anim_f3:[240,196,16,28],dwarf_m_idle_anim_f1:[144,292,16,28],dwarf_m_idle_anim_f2:[160,292,16,28],dwarf_m_idle_anim_f3:[176,292,16,28],dwarf_m_run_anim_f0:[192,292,16,28],dwarf_m_run_anim_f1:[208,292,16,28],dwarf_m_run_anim_f2:[224,292,16,28],dwarf_m_run_anim_f3:[240,292,16,28],dwarf_m_hit_anim_f0:[256,292,16,28],knight_f_hit_anim_f0:[256,68,16,28],knight_f_idle_anim_f0:[128,68,16,28],knight_f_idle_anim_f1:[144,68,16,28],knight_f_idle_anim_f2:[160,68,16,28],knight_f_idle_anim_f3:[176,68,16,28],knight_f_run_anim_f0:[192,68,16,28],knight_f_run_anim_f1:[208,68,16,28],knight_f_run_anim_f2:[224,68,16,28],knight_f_run_anim_f3:[240,68,16,28],dwarf_f_idle_anim_f0:[128,260,16,28],dwarf_f_idle_anim_f1:[144,260,16,28],dwarf_f_idle_anim_f2:[160,260,16,28],dwarf_f_idle_anim_f3:[176,260,16,28],dwarf_f_run_anim_f0:[192,260,16,28],dwarf_f_run_anim_f1:[208,260,16,28],dwarf_f_run_anim_f2:[224,260,16,28],dwarf_f_run_anim_f3:[240,260,16,28],dwarf_f_hit_anim_f0:[256,260,16,28],weapon_anime_sword:[322,65,12,30],weapon_arrow:[324,202,7,21],weapon_baton_with_spikes:[323,41,10,22],weapon_big_hammer:[291,26,10,37],weapon_bow:[289,195,14,26],weapon_bow_2:[305,195,14,26],weapon_double_axe:[288,167,16,24],weapon_cleaver:[310,108,9,19],weapon_duel_sword:[325,97,9,30],weapon_golden_sword:[291,137,10,22],weapon_green_magic_staff:[340,129,8,30],weapon_hammer:[307,39,10,24],weapon_katana:[293,66,6,29],weapon_knife:[293,10,6,13],weapon_knight_sword:[339,98,10,29],weapon_lavish_sword:[307,129,10,30],weapon_mace:[339,39,10,24],weapon_saw_sword:[307,70,10,25],weapon_machete:[294,105,5,22],weapon_red_gem_sword:[339,10,10,21],weapon_red_magic_staff:[324,129,8,30],weapon_regular_sword:[323,10,10,21],weapon_rusty_sword:[307,10,10,21],weapon_spear:[309,161,6,30],weapon_waraxe:[324,168,12,23],weapon_throwing_axe:[340,161,10,14],weapon_axe:[341,74,9,21],wogol_idle_anim_f0:[368,249,16,23],wogol_idle_anim_f1:[384,249,16,23],wogol_idle_anim_f2:[400,249,16,23],wogol_idle_anim_f3:[416,249,16,23],wogol_run_anim_f0:[432,249,16,23],wogol_run_anim_f1:[448,249,16,23],wogol_run_anim_f2:[464,249,16,23],wogol_run_anim_f3:[480,249,16,23],zombie_anim_f10:[368,136,16,16],zombie_anim_f1:[384,136,16,16],zombie_anim_f2:[400,136,16,16],zombie_anim_f3:[416,136,16,16],tiny_zombie_idle_anim_f0:[368,16,16,16],tiny_zombie_idle_anim_f1:[384,16,16,16],tiny_zombie_idle_anim_f2:[400,16,16,16],tiny_zombie_idle_anim_f3:[416,16,16,16],tiny_zombie_run_anim_f0:[432,16,16,16],tiny_zombie_run_anim_f1:[448,16,16,16],tiny_zombie_run_anim_f2:[464,16,16,16],tiny_zombie_run_anim_f3:[480,16,16,16],goblin_idle_anim_f0:[368,40,16,16],goblin_idle_anim_f1:[384,40,16,16],goblin_idle_anim_f2:[400,40,16,16],goblin_idle_anim_f3:[416,40,16,16],goblin_run_anim_f0:[432,40,16,16],goblin_run_anim_f1:[448,40,16,16],goblin_run_anim_f2:[464,40,16,16],goblin_run_anim_f3:[480,40,16,16],ice_zombie_anim_f0:[432,136,16,16],ice_zombie_anim_f1:[448,136,16,16],ice_zombie_anim_f2:[464,136,16,16],ice_zombie_anim_f3:[480,136,16,16],knight_m_idle_anim_f0:[128,100,16,28],knight_m_idle_anim_f1:[144,100,16,28],knight_m_idle_anim_f2:[160,100,16,28],knight_m_idle_anim_f3:[176,100,16,28],knight_m_run_anim_f0:[192,100,16,28],knight_m_run_anim_f1:[208,100,16,28],knight_m_run_anim_f2:[224,100,16,28],knight_m_run_anim_f3:[240,100,16,28],knight_m_hit_anim_f0:[256,100,16,28],crate:[288,408,16,24],edge_down:[96,128,16,16],orc_shaman_idle_anim_f0:[368,201,16,23],orc_shaman_idle_anim_f1:[384,201,16,23],orc_shaman_idle_anim_f2:[400,201,16,23],orc_shaman_idle_anim_f3:[416,201,16,23],orc_shaman_run_anim_f0:[432,201,16,23],orc_shaman_run_anim_f1:[448,201,16,23],orc_shaman_run_anim_f2:[464,201,16,23],orc_shaman_run_anim_f3:[480,201,16,23],swampy_anim_f0:[432,112,16,16],swampy_anim_f1:[448,112,16,16],swampy_anim_f2:[464,112,16,16],swampy_anim_f3:[480,112,16,16],muddy_anim_f0:[368,112,16,16],muddy_anim_f1:[384,112,16,16],muddy_anim_f2:[400,112,16,16],muddy_anim_f3:[416,112,16,16],necromancer_anim_f0:[368,225,16,23],necromancer_anim_f1:[384,225,16,23],necromancer_anim_f2:[400,225,16,23],necromancer_anim_f3:[416,225,16,23],masked_orc_idle_anim_f0:[368,153,16,23],masked_orc_idle_anim_f1:[384,153,16,23],masked_orc_idle_anim_f2:[400,153,16,23],masked_orc_idle_anim_f3:[416,153,16,23],masked_orc_run_anim_f0:[432,153,16,23],masked_orc_run_anim_f1:[448,153,16,23],masked_orc_run_anim_f2:[464,153,16,23],masked_orc_run_anim_f3:[480,153,16,23],orc_warrior_idle_anim_f0:[368,177,16,23],orc_warrior_idle_anim_f1:[384,177,16,23],orc_warrior_idle_anim_f2:[400,177,16,23],orc_warrior_idle_anim_f3:[416,177,16,23],orc_warrior_run_anim_f0:[432,177,16,23],orc_warrior_run_anim_f1:[448,177,16,23],orc_warrior_run_anim_f2:[464,177,16,23],orc_warrior_run_anim_f3:[480,177,16,23],skelet_idle_anim_f0:[368,88,16,16],skelet_idle_anim_f1:[384,88,16,16],skelet_idle_anim_f2:[400,88,16,16],skelet_idle_anim_f3:[416,88,16,16],skelet_run_anim_f0:[432,88,16,16],skelet_run_anim_f1:[448,88,16,16],skelet_run_anim_f2:[464,88,16,16],skelet_run_anim_f3:[480,88,16,16],skull:[288,432,16,16],ogre_idle_anim_f0:[16,380,32,36],ogre_idle_anim_f1:[48,380,32,36],ogre_idle_anim_f2:[80,380,32,36],ogre_idle_anim_f3:[112,380,32,36],ogre_run_anim_f0:[144,380,32,36],ogre_run_anim_f1:[176,380,32,36],ogre_run_anim_f2:[208,380,32,36],ogre_run_anim_f3:[240,380,32,36],ui_heart_empty:[321,370,13,12],ui_heart_full:[289,370,13,12],ui_heart_half:[305,370,13,12],doc_idle_anim_f0:[368,345,16,23],doc_idle_anim_f1:[384,345,16,23],doc_idle_anim_f2:[400,345,16,23],doc_idle_anim_f3:[416,345,16,23],doc_run_anim_f0:[432,345,16,23],doc_run_anim_f1:[448,345,16,23],doc_run_anim_f2:[464,345,16,23],doc_run_anim_f3:[480,345,16,23],pumpkin_dude_idle_anim_f0:[368,321,16,23],pumpkin_dude_idle_anim_f1:[384,321,16,23],pumpkin_dude_idle_anim_f2:[400,321,16,23],pumpkin_dude_idle_anim_f3:[416,321,16,23],pumpkin_dude_run_anim_f0:[432,321,16,23],pumpkin_dude_run_anim_f1:[448,321,16,23],pumpkin_dude_run_anim_f2:[464,321,16,23],pumpkin_dude_run_anim_f3:[480,321,16,23],angel_idle_anim_f0:[368,304,16,16],angel_idle_anim_f1:[384,304,16,16],angel_idle_anim_f2:[400,304,16,16],angel_idle_anim_f3:[416,304,16,16],angel_run_anim_f0:[432,304,16,16],angel_run_anim_f1:[448,304,16,16],angel_run_anim_f2:[464,304,16,16],angel_run_anim_f3:[480,304,16,16],chort_idle_anim_f0:[368,273,16,23],chort_idle_anim_f1:[384,273,16,23],chort_idle_anim_f2:[400,273,16,23],chort_idle_anim_f3:[416,273,16,23],chort_run_anim_f0:[432,273,16,23],chort_run_anim_f1:[448,273,16,23],chort_run_anim_f2:[464,273,16,23],chort_run_anim_f3:[480,273,16,23],column:[80,80,16,48],column_wall:[96,80,16,48],wall_fountain_mid_blue_anim_f0:[64,48,16,16],wall_fountain_mid_blue_anim_f1:[80,48,16,16],wall_fountain_mid_blue_anim_f2:[96,48,16,16],wall_fountain_mid_red_anim_f0:[64,16,16,16],wall_fountain_mid_red_anim_f1:[80,16,16,16],wall_fountain_mid_red_anim_f2:[96,16,16,16],wall_fountain_basin_red_anim_f0:[64,32,16,16],wall_fountain_basin_red_anim_f1:[80,32,16,16],wall_fountain_basin_red_anim_f2:[96,32,16,16],wall_fountain_basin_blue_anim_f0:[64,64,16,16],wall_fountain_basin_blue_anim_f1:[80,64,16,16],wall_fountain_basin_blue_anim_f2:[96,64,16,16],wall_goo_base:[64,96,16,16],wall_goo:[64,80,16,16],wall_hole_1:[48,32,16,16],wall_hole_2:[48,48,16,16],wall_banner_blue:[32,32,16,16],wall_banner_red:[16,32,16,16],wall_banner_green:[16,48,16,16],wall_banner_yellow:[32,48,16,16],floor_ladder:[48,96,16,16],floor_spikes_anim_f0:[16,192,16,16],floor_spikes_anim_f1:[32,192,16,16],floor_spikes_anim_f2:[48,192,16,16],floor_spikes_anim_f3:[64,192,16,16],hole:[96,144,16,16],floor_stairs:[80,192,16,16],floor_1:[16,64,16,16],floor_2:[32,64,16,16],floor_3:[48,64,16,16],floor_4:[16,80,16,16],floor_5:[32,80,16,16],floor_6:[48,80,16,16],floor_7:[16,96,16,16],floor_8:[32,96,16,16],wall_left:[16,16,16,16],wall_mid:[32,16,16,16],wall_right:[48,16,16,16],wall_top_left:[16,0,16,16],wall_top_mid:[32,0,16,16],wall_top_right:[48,0,16,16],lizard_m_idle_anim_f0:[128,228,16,28],lizard_m_idle_anim_f1:[144,228,16,28],lizard_m_idle_anim_f2:[160,228,16,28],lizard_m_idle_anim_f3:[176,228,16,28],lizard_m_run_anim_f0:[192,228,16,28],lizard_m_run_anim_f1:[208,228,16,28],lizard_m_run_anim_f2:[224,228,16,28],lizard_m_run_anim_f3:[240,228,16,28],lizard_m_hit_anim_f0:[256,228,16,28],elf_f_idle_anim_f0:[128,4,16,28],elf_f_idle_anim_f1:[144,4,16,28],elf_f_idle_anim_f2:[160,4,16,28],elf_f_idle_anim_f3:[176,4,16,28],elf_f_run_anim_f0:[192,4,16,28],elf_f_run_anim_f1:[208,4,16,28],elf_f_run_anim_f2:[224,4,16,28],elf_f_run_anim_f3:[240,4,16,28],elf_f_hit_anim_f0:[256,4,16,28],elf_m_idle_anim_f0:[128,36,16,28],elf_m_idle_anim_f1:[144,36,16,28],elf_m_idle_anim_f2:[160,36,16,28],elf_m_idle_anim_f3:[176,36,16,28],elf_m_run_anim_f0:[192,36,16,28],elf_m_run_anim_f1:[208,36,16,28],elf_m_run_anim_f2:[224,36,16,28],elf_m_run_anim_f3:[240,36,16,28],elf_m_hit_anim_f0:[256,36,16,28],button_red_up:[16,208,16,16],button_red_down:[32,208,16,16],button_blue_up:[48,208,16,16],button_blue_down:[64,208,16,16],lever_left:[80,208,16,16],lever_right:[96,208,16,16],doors_frame_left:[16,240,16,32],doors_frame_right:[64,240,16,32],doors_frame_top:[32,224,32,16],doors_leaf_closed:[32,240,32,32],doors_leaf_open:[80,240,32,32],wall_edge_bottom_left:[32,168,16,16],wall_edge_bottom_right:[48,168,16,16],wall_edge_mid_left:[32,152,16,16],wall_edge_top_left:[31,120,16,16],wall_edge_left:[32,136,16,16],wall_edge_top_right:[48,120,16,16],wall_edge_right:[48,136,16,16],wall_edge_mid_right:[48,152,16,16],wall_edge_tshape_bottom_right:[64,152,16,16],wall_edge_tshape_bottom_left:[80,152,16,16],wall_edge_tshape_right:[64,168,16,16],wall_edge_tshape_left:[80,168,16,16],wall_outer_front_right:[16,168,16,16],wall_outer_front_left:[0,168,16,16],wall_outer_mid_left:[0,152,16,16],wall_outer_top_left:[0,136,16,16],wall_outer_top_right:[16,136,16,16],wall_outer_mid_right:[16,152,16,16],wall_fountain_top_1:[64,0,16,16],wall_fountain_top_2:[80,0,16,16],wall_fountain_top_3:[96,0,16,16],slug_anim_f0:[368,369,16,23],slug_anim_f1:[384,369,16,23],slug_anim_f2:[400,369,16,23],slug_anim_f3:[416,369,16,23],tiny_slug_anim_f0:[432,376,16,16],tiny_slug_anim_f1:[448,376,16,16],tiny_slug_anim_f2:[464,376,16,16],tiny_slug_anim_f3:[480,376,16,16]};
+function animKey(base,frame,moving){
+  const f=frame%4;
+  const cands = moving
+    ? [base+"_run_anim_f"+f, base+"_idle_anim_f"+f, base+"_anim_f"+f]
+    : [base+"_idle_anim_f"+f, base+"_anim_f"+f, base+"_run_anim_f"+f];
+  for(const k of cands) if(DUNGEON_ATLAS[k]) return k;
+  return base+"_idle_anim_f0" in DUNGEON_ATLAS ? base+"_idle_anim_f0" : (base in DUNGEON_ATLAS ? base : null);
+}
+
+/* ---------- classes / stat growth ---------- */
+const GROWTH={
+  hero:  {hp:7,mp:2,atk:2,def:2,agi:2,mag:1},
+  rowan: {hp:8,mp:0,atk:3,def:2,agi:3,mag:0},
+  faelan:{hp:4,mp:4,atk:1,def:1,agi:1,mag:3},
+  sable: {hp:4,mp:5,atk:1,def:1,agi:2,mag:3},
+  bram:  {hp:6,mp:1,atk:2,def:3,agi:1,mag:1}
+};
+const BASE={
+  hero:  {hp:22,mp:6, atk:8, def:6, agi:7, mag:4},
+  rowan: {hp:28,mp:0, atk:12,def:7, agi:9, mag:0},
+  faelan:{hp:16,mp:14,atk:5, def:5, agi:5, mag:9},
+  sable: {hp:14,mp:16,atk:4, def:4, agi:6, mag:10},
+  bram:  {hp:24,mp:5, atk:9, def:8, agi:5, mag:3}
+};
+const NAMES={hero:null,rowan:"Rowan",faelan:"Faelan",sable:"Sable",bram:"Bram"};
+const SPRITE={
+  hero:  {key:"knight_m"},
+  rowan: {key:"knight_f"},
+  faelan:{key:"elf_m"},
+  sable: {key:"wizzard_f"},
+  bram:  {key:"dwarf_m"}
+};
+
+function xpToNext(level){ return Math.floor(level*level*15 + level*35); }
+
+function newChar(id,name){
+  const b=BASE[id];
+  return {
+    id, name: name || NAMES[id], level:1, xp:0,
+    hp:b.hp, maxHp:b.hp, mp:b.mp, maxMp:b.mp,
+    atk:b.atk, def:b.def, agi:b.agi, mag:b.mag,
+    weapon:null, armor:null, spells:[], ko:false, defending:false
+  };
+}
+
+/* ---------- spells ---------- */
+const SPELLS={
+  heal:      {name:"Heal",        mp:3,  power:26, kind:"heal",  target:"ally"},
+  midheal:   {name:"Greater Heal",mp:8,  power:70, kind:"heal",  target:"ally"},
+  healAll:   {name:"Sacred Light",mp:14, power:44, kind:"healAll",target:"allAllies"},
+  revive:    {name:"Revive",      mp:16, power:0.6,kind:"revive",target:"ally"},
+  spark:     {name:"Spark",       mp:4,  power:18, kind:"dmg",   target:"enemy"},
+  fire:      {name:"Fire",        mp:4,  power:17, kind:"dmg",   target:"enemy"},
+  ice:       {name:"Ice Lance",   mp:6,  power:25, kind:"dmg",   target:"enemy"},
+  firestorm: {name:"Firestorm",   mp:10, power:22, kind:"dmgAll",target:"allEnemies"},
+  blizzard:  {name:"Blizzard",    mp:14, power:30, kind:"dmgAll",target:"allEnemies"},
+  weaken:    {name:"Weaken",      mp:5,  power:0.3,kind:"debuff",target:"enemy"},
+  zenithblast:{name:"Zenith Blast",mp:20,power:52, kind:"dmgAll",target:"allEnemies"}
+};
+const SPELL_LEARN={
+  hero:  {3:"heal",5:"spark",9:"midheal",15:"zenithblast"},
+  faelan:{1:"heal",6:"midheal",8:"weaken",12:"healAll",15:"revive"},
+  sable: {1:"fire",4:"ice",7:"firestorm",9:"weaken",11:"blizzard"}
+};
+
+/* ---------- items ---------- */
+const ITEMS={
+  herb:      {name:"Healing Herb",  type:"consumable",price:8,  heal:25},
+  tonic:     {name:"Tonic",         type:"consumable",price:10, heal:15},
+  curePotion:{name:"Cure Potion",   type:"consumable",price:28, heal:65},
+  elixir:    {name:"Elixir",        type:"consumable",price:90, heal:9999,mp:9999},
+  manaLeaf:  {name:"Mana Leaf",     type:"consumable",price:16, mp:15},
+  manaDraught:{name:"Mana Draught", type:"consumable",price:45, mp:40},
+  windWing:  {name:"Wing of Wind",  type:"field",      price:15, warp:true},
+  revivalFeather:{name:"Revival Feather",type:"consumable",price:110,revive:0.5},
+
+  bronzeSword:{name:"Bronze Sword", type:"weapon",slot:"weapon",price:25, atk:4, equip:["hero","rowan"]},
+  ironSword:  {name:"Iron Sword",   type:"weapon",slot:"weapon",price:70, atk:8, equip:["hero","rowan"]},
+  steelSword: {name:"Steel Sword",  type:"weapon",slot:"weapon",price:160,atk:13,equip:["hero","rowan"]},
+  knightBlade:{name:"Knight's Blade",type:"weapon",slot:"weapon",price:340,atk:19,equip:["hero","rowan"]},
+  zenithianSword:{name:"Zenithian Sword",type:"weapon",slot:"weapon",price:0,atk:30,equip:["hero"]},
+
+  club:      {name:"Wooden Club",  type:"weapon",slot:"weapon",price:20, atk:3, equip:["bram"]},
+  warHammer: {name:"War Hammer",   type:"weapon",slot:"weapon",price:80, atk:9, equip:["bram"]},
+  battleAxe: {name:"Battle Axe",   type:"weapon",slot:"weapon",price:190,atk:16,equip:["bram"]},
+
+  oakStaff:  {name:"Oak Staff",    type:"weapon",slot:"weapon",price:25, mag:4, equip:["faelan","sable"]},
+  willowStaff:{name:"Willow Staff",type:"weapon",slot:"weapon",price:70, mag:8, equip:["faelan","sable"]},
+  silverStaff:{name:"Silver Staff",type:"weapon",slot:"weapon",price:160,mag:14,equip:["faelan","sable"]},
+
+  clothArmor:{name:"Cloth Robe",   type:"armor",slot:"armor",price:20, def:3, equip:"all"},
+  leatherArmor:{name:"Leather Armor",type:"armor",slot:"armor",price:55, def:6, equip:"all"},
+  chainMail: {name:"Chain Mail",   type:"armor",slot:"armor",price:140,def:11,equip:"all"},
+  plateArmor:{name:"Plate Armor",  type:"armor",slot:"armor",price:300,def:17,equip:"all"},
+  zenithianArmor:{name:"Zenithian Armor",type:"armor",slot:"armor",price:0,def:26,equip:["hero"]}
+};
+
+const SHOPS={
+  ashcombeShop:["herb","tonic","bronzeSword","club","clothArmor"],
+  willowmereShop:["herb","curePotion","manaLeaf","ironSword","oakStaff","leatherArmor","windWing"],
+  sunspireShop:["curePotion","manaDraught","elixir","revivalFeather","steelSword","warHammer","willowStaff","chainMail","windWing"]
+};
+
+/* ---------- enemies ---------- */
+const ENEMIES={
+  slime:     {name:"Slime",       hp:8, atk:4, def:2, agi:3, xp:3, gold:2, sprite:{key:"tiny_slug"}},
+  ghostMoth: {name:"Ghost Moth",  hp:10,atk:5, def:1, agi:7, xp:4, gold:3, sprite:{key:"imp"}},
+  goblin:    {name:"Goblin",      hp:14,atk:7, def:3, agi:5, xp:6, gold:5, sprite:{key:"goblin"}},
+  wildWolf:  {name:"Wild Wolf",   hp:16,atk:8, def:3, agi:8, xp:7, gold:5, sprite:{key:"wogol"}},
+  caveBat:   {name:"Cave Bat",    hp:9, atk:6, def:1, agi:9, xp:5, gold:4, sprite:{key:"tiny_zombie"}},
+  skeleton:  {name:"Skeleton Soldier",hp:22,atk:10,def:6,agi:4, xp:10,gold:9, sprite:{key:"skelet"}},
+  bandit:    {name:"Bandit",      hp:20,atk:9, def:5, agi:7, xp:9, gold:12,sprite:{key:"masked_orc"}},
+  scorpion:  {name:"Giant Scorpion",hp:26,atk:11,def:7,agi:5, xp:12,gold:10,sprite:{key:"swampy"}},
+  wraith:    {name:"Sand Wraith", hp:24,atk:12,def:4, agi:8, xp:13,gold:11,sprite:{key:"muddy"}},
+  golem:     {name:"Stone Golem", hp:44,atk:13,def:13,agi:2, xp:22,gold:18,sprite:{key:"ogre"}},
+  frostWolf: {name:"Frost Wolf",  hp:32,atk:14,def:6, agi:9, xp:19,gold:15,sprite:{key:"ice_zombie"}},
+  darkKnight:{name:"Dark Knight", hp:46,atk:16,def:11,agi:6, xp:27,gold:24,sprite:{key:"knight_m",tint:"brightness(0.35) saturate(1.4)"}},
+  shadowPriest:{name:"Shadow Priest",hp:36,atk:12,def:6,agi:7,xp:24,gold:22,sprite:{key:"necromancer"},
+      skill:{name:"Dark Bolt",chance:.3,dmgMult:1.6,targets:"single"}},
+  dragonWhelp:{name:"Dragon Whelp",hp:62,atk:20,def:10,agi:8, xp:42,gold:35,sprite:{key:"chort"},
+      skill:{name:"Fire Breath",chance:.35,dmgMult:1.4,targets:"all"}},
+  wyvern:    {name:"Wyvern",      hp:52,atk:18,def:8, agi:10,xp:32,gold:28,sprite:{key:"big_demon"}},
+
+  bogmire:   {name:"Bogmire, the Cave Troll",hp:110,atk:22,def:11,agi:4,xp:95,gold:70,boss:true,
+      sprite:{key:"big_zombie",scale:1.3},
+      skill:{name:"Boulder Toss",chance:.3,dmgMult:1.5,targets:"single"}},
+  frostwyrm: {name:"the Frost Wyrm",hp:170,atk:26,def:14,agi:7,xp:170,gold:130,boss:true,
+      sprite:{key:"ice_zombie",scale:2.1,tint:"saturate(1.6) hue-rotate(150deg) brightness(1.2)"},
+      skill:{name:"Frost Breath",chance:.35,dmgMult:1.5,targets:"all"}},
+  malkanther:{name:"Malkanther, the Dragon Lord",hp:340,atk:28,def:15,agi:9,xp:0,gold:0,boss:true,
+      sprite:{key:"big_demon",scale:2.2,tint:"saturate(1.5) hue-rotate(280deg) brightness(0.75)"},
+      skill:{name:"Abyssal Flame",chance:.35,dmgMult:1.5,targets:"all"}}
+};
+
+/* ===========================================================
+   MAP GENERATION
+   =========================================================== */
+function fillRoom(w,h,exitX,pillars){
+  const g=[];
+  for(let y=0;y<h;y++){
+    let row="";
+    for(let x=0;x<w;x++) row += (y===0||y===h-1||x===0||x===w-1) ? "#" : ((y+x)%7===0?".":".");
+    g.push(row);
+  }
+  const bottom=g[h-1].split(""); bottom[exitX]="D"; g[h-1]=bottom.join("");
+  (pillars||[]).forEach(([px,py])=>{ if(py>0&&py<h-1&&px>0&&px<w-1){ const r=g[py].split(""); r[px]="#"; g[py]=r.join(""); } });
+  return g;
+}
+
+function buildOverworld(){
+  const W=32,H=24;
+  const g=[]; for(let y=0;y<H;y++) g.push(new Array(W).fill("."));
+  for(let x=0;x<W;x++){ g[0][x]="~"; g[H-1][x]="~"; }
+  for(let y=0;y<H;y++){ g[y][0]="~"; g[y][W-1]="~"; }
+  for(let x=2;x<=29;x++){ if(x>=19&&x<=21) continue; g[11][x]="^"; g[12][x]="^"; }
+  for(let y=5;y<=9;y++) for(let x=3;x<=9;x++) g[y][x]="#";
+  for(let y=1;y<=10;y++) g[y][16] = (y===6)?"=":"~";
+  for(let y=13;y<=22;y++) g[y][16] = (y===17)?"=":"~";
+  for(let y=15;y<=21;y++) for(let x=18;x<=27;x++) if(g[y][x]===".") g[y][x]="d";
+  g[3][4]="A"; g[3][14]="K"; g[7][5]="F"; g[9][3]="V"; g[12][20]="P"; g[18][23]="M"; g[2][29]="Z";
+  return g.map(r=>r.join(""));
+}
+
+const MAPS={
+  overworld:{
+    id:"overworld", name:"The Realm of Aldan", kind:"overworld",
+    tiles:buildOverworld(), encRate:0.055, pool:"overLow",
+    npcs:[], chests:[], warps:[], boss:null
+  },
+  ashcombe:{
+    id:"ashcombe", name:"Ashcombe Village", kind:"town",
+    tiles:fillRoom(12,9,6,[[2,2],[3,2],[2,3],[9,2],[10,2],[9,3]]),
+    encRate:0, spawn:{x:6,y:7},
+    exitTo:{map:"overworld",x:4,y:4},
+    npcs:[
+      {x:5,y:4,name:"Elder Maren",color:"#c9a24a",kind:"talk",
+        lines:["flags.introDone",
+          ["You feel it too, don't you? The dreams of a black dragon coiled over a burning throne...",
+           "Old prophecy speaks of a chosen line, blessed by the Zenithian legacy, destined to stand against the Dragon Lord.",
+           "Whatever stirs in you, child, it did not choose you by accident. Seek King Aldous at Castellon Castle to the east.",
+           "May the light of the elder stars go with you."],
+          ["The road east leads to Castellon Castle. The King will want to hear of your dreams.",
+           "Take care in the tall grass and forest - the Dragon Lord's creatures range further each day."]]},
+      {x:3,y:6,name:"Villager",color:"#7a9e6b",kind:"talk",
+        lines:[null,["This has always been a quiet village... until the nightmares started.","Talk to the innkeeper if your wounds trouble you."]]},
+      {x:9,y:6,name:"Old Farmer",color:"#8a6a4a",kind:"talk",
+        lines:[null,["Wing of Wind will carry you straight back to any town you've visited. Handy for a weary pair of boots."]]},
+      {x:2,y:5,name:"Shopkeeper",color:"#c9a24a",kind:"shop",shop:"ashcombeShop"},
+      {x:9,y:2,name:"Innkeeper",color:"#c9a24a",kind:"inn",cost:8}
+    ],
+    chests:[], warps:[]
+  },
+  castellon:{
+    id:"castellon", name:"Castellon Castle", kind:"town",
+    tiles:fillRoom(14,10,7,[[3,2],[3,3],[10,2],[10,3],[3,7],[10,7]]),
+    encRate:0, spawn:{x:7,y:8},
+    exitTo:{map:"overworld",x:14,y:4},
+    npcs:[
+      {x:7,y:2,name:"King Aldous",color:"#e0b64d",kind:"talk",
+        lines:["flags.metKing",
+          ["At last - the one from the old bloodline. I am King Aldous, and this realm is dying by inches.",
+           "Malkanther, the Dragon Lord, has raised an army of shadow in the northern peaks. My scouts do not return.",
+           "Legend tells of the Zenithian Sword and Armor, hidden where the mountains touch the sky, that alone can pierce his hide.",
+           "Find companions, hero. None have ever walked this road alone. My finest knight, Rowan, stands ready in this very hall - speak with her."],
+          ["Gather your companions and seek the Zenithian legacy in the mountain pass north of the desert road.",
+           "The realm's hope rides with you."]]},
+      {x:6,y:6,name:"Rowan",color:"#a53c46",kind:"recruit",charId:"rowan",requiresFlag:"metKing",
+        gateLines:["Talk to the King first - I don't follow just anyone into a dragon's den."],
+        lines:["party.rowan",
+          ["So it's true. You're the one from the old bloodline.","I've trained with steel since I could walk. Let me guard your back - try to keep up.",
+           "__RECRUIT__"],
+          ["Still at your side. Lead on."]]},
+      {x:4,y:7,name:"Guard",color:"#7a7a8a",kind:"talk",lines:[null,["Stand tall. The King has waited a long time for you."]]},
+      {x:10,y:7,name:"Guard",color:"#7a7a8a",kind:"talk",lines:[null,["The armory's finest still couldn't scratch a dragon's scale. You'll need something older. Something Zenithian."]]}
+    ],
+    chests:[], warps:[]
+  },
+  willowmere:{
+    id:"willowmere", name:"Willowmere Village", kind:"town",
+    tiles:fillRoom(10,8,5,[[2,2],[6,2],[2,5]]),
+    encRate:0, spawn:{x:5,y:6},
+    exitTo:{map:"overworld",x:3,y:10},
+    npcs:[
+      {x:3,y:2,name:"Villager",color:"#7a9e6b",kind:"talk",
+        lines:[null,["Our healer Faelan went into the forest cave to tend a wounded traveler and never came back.",
+          "The cave mouth lies just north of here, past the old pines. Please, if you go - bring him home."]]},
+      {x:7,y:2,name:"Villager",color:"#8a6a4a",kind:"talk",lines:[null,["Something froze the well over last night. In summer! The signs grow worse by the week."]]},
+      {x:2,y:6,name:"Innkeeper",color:"#c9a24a",kind:"inn",cost:8},
+      {x:6,y:6,name:"Shopkeeper",color:"#c9a24a",kind:"shop",shop:"willowmereShop"}
+    ],
+    chests:[], warps:[]
+  },
+  sunspire:{
+    id:"sunspire", name:"Sunspire", kind:"town",
+    tiles:fillRoom(12,9,6,[[3,2],[8,2],[3,6]]),
+    encRate:0, spawn:{x:6,y:7},
+    exitTo:{map:"overworld",x:23,y:19},
+    npcs:[
+      {x:3,y:3,name:"Sable",color:"#5a3c8a",kind:"recruit",charId:"sable",
+        lines:["party.sable",
+          ["Another wanderer with wide eyes. I've read every tome in this dusty archive on the old Zenithian wards.",
+           "You're hunting the Dragon Lord's ruin, aren't you? Fine. My fire will clear your path. I'm coming with you.",
+           "__RECRUIT__"],
+          ["My spellbook and I are already packed. Lead on."]]},
+      {x:8,y:3,name:"Bram",color:"#8a6a2a",kind:"shopAndRecruit",shop:"sunspireShop",charId:"bram",
+        lines:["party.bram",
+          ["Finest wares this side of the dunes! ...though truthfully, business has been thin since the roads turned dangerous.",
+           "Tell you what - take me along and I'll haggle every merchant we meet down to nothing. Deal?",
+           "__RECRUIT__"],
+          ["Still the best prices in Sunspire, if I say so myself."]]},
+      {x:9,y:6,name:"Villager",color:"#c9a25f",kind:"talk",lines:[null,["Frost in the mountain pass, fire in the north peaks. The old songs say a dragon's rage warps the very seasons."]]},
+      {x:2,y:6,name:"Innkeeper",color:"#c9a24a",kind:"inn",cost:12}
+    ],
+    chests:[], warps:[]
+  },
+  cave:{
+    id:"cave", name:"Forest Cave", kind:"dungeon",
+    tiles:fillRoom(16,14,8,[[4,4],[4,5],[11,4],[11,5],[7,8],[8,8],[3,10],[12,10]]),
+    encRate:0.14, pool:"cave", spawn:{x:8,y:12},
+    exitTo:{map:"overworld",x:5,y:8},
+    npcs:[],
+    chests:[
+      {x:3,y:3,item:"ironSword",flag:"chestCave1"},
+      {x:12,y:3,item:"curePotion",flag:"chestCave2",qty:2}
+    ],
+    boss:{x:8,y:2,id:"bogmire",flag:"bogmireDown",
+      pre:["A hulking troll blocks the passage, a chained figure slumped behind it.","Bogmire, the Cave Troll, rises to meet you!"],
+      post:["Bogmire crashes down. The chains fall slack.",
+        "The healer looks up, exhausted but alive. \"You came... thank the stars. I am Faelan - let me repay you on the road ahead.\"",
+        "__RECRUIT_FAELAN__"]}
+  },
+  mountainpass:{
+    id:"mountainpass", name:"Mountain Pass", kind:"dungeon",
+    tiles:fillRoom(18,16,9,[[4,4],[4,5],[13,4],[13,5],[8,8],[9,8],[4,11],[13,11]]),
+    encRate:0.15, pool:"mountain", spawn:{x:9,y:14},
+    exitTo:{map:"overworld",x:20,y:13},
+    npcs:[],
+    chests:[
+      {x:3,y:3,item:"zenithianSword",flag:"chestZSword",requiresFlag:"frostwyrmDown",lockedMsg:"A shard of ancient ice seals this chest. Something guards it still."},
+      {x:14,y:3,item:"zenithianArmor",flag:"chestZArmor",requiresFlag:"frostwyrmDown",lockedMsg:"A shard of ancient ice seals this chest. Something guards it still."}
+    ],
+    boss:{x:9,y:5,id:"frostwyrm",flag:"frostwyrmDown",
+      pre:["A vast shape uncoils from the frozen alcove ahead.","The Frost Wyrm bares its fangs, guarding the Zenithian legacy!"],
+      post:["The Frost Wyrm falls still, and the alcove's ice shatters, freeing the treasure within."]}
+  },
+  dragoncastle:{
+    id:"dragoncastle", name:"The Dragon Lord's Keep", kind:"dungeon",
+    tiles:fillRoom(18,18,9,[[4,4],[13,4],[4,13],[13,13],[8,8],[9,8],[6,3],[11,3],[6,14],[11,14]]),
+    encRate:0.12, pool:"dragoncastle", spawn:{x:9,y:16},
+    exitTo:{map:"overworld",x:29,y:3},
+    npcs:[],
+    chests:[],
+    boss:{x:9,y:3,id:"malkanther",flag:"gameWon",
+      pre:["The air itself curdles with dread. Atop a throne of bone and cinder, Malkanther unfurls his wings.",
+        "\"So. The old bloodline sends a child to end me.\" MALKANTHER, THE DRAGON LORD, rises for the final battle!"],
+      post:[]}
+  }
+};
+
+const POOLS={
+  overLow:["slime","ghostMoth","goblin","wildWolf"],
+  overMid:["bandit","scorpion","wraith","frostWolf"],
+  cave:["goblin","caveBat","skeleton","slime"],
+  mountain:["golem","frostWolf","darkKnight","wyvern"],
+  dragoncastle:["darkKnight","wyvern","shadowPriest","dragonWhelp"]
+};
+
+/* ===========================================================
+   GAME STATE
+   =========================================================== */
+let gs=null; // {player,party,inventory,gold,flags,lastSafe,heroName}
+let curMode="none"; // overworld|dialogue|menu|shop|battle|bigmsg
+let camX=0,camY=0;
+let heldDir=null, moveTimer=null, animT=0, moveAnim=null;
+let dialogueQueue=[], dialogueCB=null;
+let bigMsgQueue=[], bigMsgCB=null;
+let battle=null;
+
+function activeMap(){ return MAPS[gs.player.map]; }
+
+function defaultState(){
+  const hero=newChar("hero","Aldric");
+  return {
+    player:{map:"ashcombe",x:6,y:7,dir:"down"},
+    party:[hero],
+    inventory:{herb:3,tonic:2},
+    gold:40,
+    flags:{},
+    lastSafe:{map:"ashcombe",x:6,y:7}
+  };
+}
+
+function equipStat(ch,stat){
+  let v=ch[stat];
+  if(ch.weapon && ITEMS[ch.weapon][stat]) v+=ITEMS[ch.weapon][stat];
+  if(ch.armor && ITEMS[ch.armor][stat]) v+=ITEMS[ch.armor][stat];
+  return v;
+}
+function effAtk(ch){ return equipStat(ch,"atk"); }
+function effDef(ch){ return equipStat(ch,"def"); }
+function effMag(ch){ return equipStat(ch,"mag"); }
+
+function partyById(id){ return gs.party.find(c=>c.id===id); }
+function hasParty(id){ return !!partyById(id); }
+
+/* ===========================================================
+   SAVE / LOAD
+   =========================================================== */
+function save(){
+  try{
+    localStorage.setItem("zenithian_save", JSON.stringify(gs));
+    try{ window.claude?.hot?.snapshot?.({gs, screenShown:true}); }catch(e){}
+  }catch(e){}
+}
+function hasSave(){ try{ return !!localStorage.getItem("zenithian_save"); }catch(e){ return false; } }
+function loadSave(){ try{ return JSON.parse(localStorage.getItem("zenithian_save")); }catch(e){ return null; } }
+
+/* ===========================================================
+   CANVAS / SPRITES
+   =========================================================== */
+const canvas=document.getElementById("gameCanvas");
+const ctx=canvas.getContext("2d");
+ctx.imageSmoothingEnabled=false;
+
+function drawKTile(key,px,py){
+  const t=KTILES[key];
+  ctx.drawImage(overworldImg,t[0],t[1],16,16,px,py,TILE,TILE);
+}
+function drawTile(code,px,py,mx,my){
+  switch(code){
+    case ".": drawKTile((mx+my)%9===0?"grass2":"grass",px,py); break;
+    case ",": drawKTile("dirt",px,py); break;
+    case "d": drawKTile("sand",px,py); break;
+    case "#": drawKTile("grass",px,py); drawKTile((mx*3+my)%2===0?"treePine":"treePine2",px,py); break;
+    case "^": drawKTile("mountain",px,py); break;
+    case "~": drawKTile("water",px,py); break;
+    case "=": drawKTile("water",px,py);
+      ctx.fillStyle="#8a6a40"; ctx.fillRect(px,py+11,TILE,10);
+      ctx.fillStyle="#6a4e2e"; ctx.fillRect(px,py+11,TILE,2); ctx.fillRect(px,py+19,TILE,2); break;
+    case "A": drawKTile("grass",px,py); drawMarkerIcon(px,py,COL.townMark,"house"); break;
+    case "K": drawKTile("grass",px,py); drawMarkerIcon(px,py,COL.castleMark,"castle"); break;
+    case "V": drawKTile("grass",px,py); drawMarkerIcon(px,py,COL.townMark,"house"); break;
+    case "M": drawKTile("sand",px,py); drawMarkerIcon(px,py,COL.townMark,"house"); break;
+    case "F": drawKTile("grass",px,py); drawKTile("treePine",px,py); drawMarkerIcon(px,py,COL.caveMark,"cave"); break;
+    case "P": drawKTile("mountain",px,py); drawMarkerIcon(px,py,COL.passMark,"cave"); break;
+    case "Z": drawKTile("mountain",px,py); drawMarkerIcon(px,py,COL.dragonMark,"gate"); break;
+    default: drawKTile("grass",px,py);
+  }
+}
+function drawMarkerIcon(px,py,mk,shape){
+  ctx.fillStyle=mk;
+  if(shape==="house"){ ctx.fillRect(px+7,py+14,18,14); ctx.beginPath(); ctx.moveTo(px+4,py+14); ctx.lineTo(px+16,py+4); ctx.lineTo(px+28,py+14); ctx.fill(); }
+  else if(shape==="castle"){ ctx.fillRect(px+6,py+12,20,16); ctx.fillRect(px+6,py+6,5,8); ctx.fillRect(px+21,py+6,5,8); ctx.fillRect(px+13,py+4,6,10); }
+  else if(shape==="cave"){ ctx.beginPath(); ctx.ellipse(px+16,py+18,11,12,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#000"; ctx.beginPath(); ctx.ellipse(px+16,py+20,5,6,0,0,Math.PI*2); ctx.fill(); }
+  else if(shape==="gate"){ ctx.fillRect(px+8,py+6,16,22); ctx.fillStyle="#000"; ctx.fillRect(px+13,py+12,6,16); }
+}
+function drawDTile(key,px,py,dw,dh){
+  const t=DUNGEON_ATLAS[key];
+  dw=dw||TILE; dh=dh||TILE;
+  ctx.drawImage(dungeonImg,t[0],t[1],t[2],t[3],px,py-(dh-TILE),dw,dh);
+}
+function floorKeyAt(mx,my){ return "floor_"+(1+((mx*7+my*13)%8)); }
+function drawInteriorTile(code,px,py,mx,my,map){
+  const w=map.tiles[0].length,h=map.tiles.length;
+  drawDTile(floorKeyAt(mx,my),px,py);
+  if(code==="#"){
+    const top = my===0 || map.tiles[my-1][mx]!=="#";
+    if(top){
+      const key = mx===0?"wall_top_left":(mx===w-1?"wall_top_right":"wall_top_mid");
+      drawDTile(key,px,py);
+    } else {
+      const key = mx===0?"wall_left":(mx===w-1?"wall_right":"wall_mid");
+      drawDTile(key,px,py);
+    }
+  } else if(code==="D"){
+    drawDTile("doors_leaf_closed",px,py,TILE,TILE);
+  }
+}
+
+function drawActor(cx,cy,spr,scale,facing,moving,targetCtx){
+  targetCtx=targetCtx||ctx;
+  scale=scale||1;
+  const frame=Math.floor(performance.now()/160);
+  const key=animKey(spr.key,frame,!!moving);
+  if(!key || !DUNGEON_ATLAS[key]) return;
+  const t=DUNGEON_ATLAS[key];
+  const baseScale=(TILE/16)*scale*(spr.scale||1);
+  const dw=t[2]*baseScale, dh=t[3]*baseScale;
+  targetCtx.save();
+  if(spr.tint) targetCtx.filter=spr.tint;
+  if(facing==="left"){
+    targetCtx.translate(cx,cy); targetCtx.scale(-1,1);
+    targetCtx.drawImage(dungeonImg,t[0],t[1],t[2],t[3], -dw/2,-dh, dw,dh);
+  } else {
+    targetCtx.drawImage(dungeonImg,t[0],t[1],t[2],t[3], cx-dw/2,cy-dh, dw,dh);
+  }
+  targetCtx.restore();
+}
+
+function clampCam(map){
+  const w=map.tiles[0].length, h=map.tiles.length;
+  let cx,cy;
+  if(w<=VIEW_W){ cx=-Math.floor((VIEW_W-w)/2); }
+  else { cx=Math.max(0,Math.min(gs.player.x-Math.floor(VIEW_W/2), w-VIEW_W)); }
+  if(h<=VIEW_H){ cy=-Math.floor((VIEW_H-h)/2); }
+  else { cy=Math.max(0,Math.min(gs.player.y-Math.floor(VIEW_H/2), h-VIEW_H)); }
+  return {cx,cy};
+}
+
+function npcSpriteKey(npc){
+  if(npc.charId) return SPRITE[npc.charId].key;
+  const map={
+    "Elder Maren":"elf_f", "King Aldous":"wizzard_m", "Guard":"knight_m",
+    "Shopkeeper":"dwarf_f", "Innkeeper":"dwarf_f", "Old Farmer":"elf_m", "Villager":"lizard_f"
+  };
+  return map[npc.name] || "lizard_m";
+}
+function render(){
+  ctx.fillStyle=COL.void; ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(curMode==="battle"){ renderBattleScene(); return; }
+  if(assetsReady<2){
+    ctx.fillStyle="#f2e6c9"; ctx.font="18px VT323, monospace"; ctx.textAlign="center";
+    ctx.fillText("Loading...", canvas.width/2, canvas.height/2);
+    return;
+  }
+  const map=activeMap();
+  const {cx,cy}=clampCam(map);
+  camX=cx; camY=cy;
+  const w=map.tiles[0].length,h=map.tiles.length;
+  for(let y=0;y<VIEW_H;y++){
+    for(let x=0;x<VIEW_W;x++){
+      const mx=cx+x,my=cy+y;
+      const px=x*TILE,py=y*TILE;
+      if(mx<0||my<0||mx>=w||my>=h){ ctx.fillStyle=COL.void; ctx.fillRect(px,py,TILE,TILE); continue; }
+      const code=map.tiles[my][mx];
+      if(map.kind==="overworld") drawTile(code,px,py,mx,my);
+      else drawInteriorTile(code,px,py,mx,my,map);
+    }
+  }
+  // chests
+  (map.chests||[]).forEach(c=>{
+    if(gs.flags[c.flag]) return;
+    const sx=(c.x-cx)*TILE, sy=(c.y-cy)*TILE;
+    if(c.x>=cx&&c.x<cx+VIEW_W&&c.y>=cy&&c.y<cy+VIEW_H){
+      const locked = c.requiresFlag && !gs.flags[c.requiresFlag];
+      ctx.save();
+      if(locked) ctx.filter="grayscale(0.6) brightness(0.7)";
+      drawDTile("chest_full_open_anim_f0",sx,sy,TILE,TILE);
+      ctx.restore();
+    }
+  });
+  // boss
+  if(map.boss && !gs.flags[map.boss.flag]){
+    const b=map.boss;
+    if(b.x>=cx&&b.x<cx+VIEW_W&&b.y>=cy&&b.y<cy+VIEW_H){
+      drawActor((b.x-cx)*TILE+16,(b.y-cy)*TILE+30,ENEMIES[b.id].sprite,1.1,"down",false);
+    }
+  }
+  // npcs
+  (map.npcs||[]).forEach(n=>{
+    if(n.kind==="recruit" && hasParty(n.charId)) return;
+    if(n.x>=cx&&n.x<cx+VIEW_W&&n.y>=cy&&n.y<cy+VIEW_H){
+      drawActor((n.x-cx)*TILE+16,(n.y-cy)*TILE+30,{key:npcSpriteKey(n)},0.95,"down",false);
+    }
+  });
+  // player
+  const moving=!!moveAnim;
+  const psx=(gs.player.x-cx)*TILE+16+ (moveAnim? (moveAnim.dx*(1-((performance.now()-moveAnim.t0)/140))*-TILE):0);
+  const psy=(gs.player.y-cy)*TILE+30+ (moveAnim? (moveAnim.dy*(1-((performance.now()-moveAnim.t0)/140))*-TILE):0);
+  drawActor(psx,psy,SPRITE.hero,1,gs.player.dir,moving);
+}
+
+/* ===========================================================
+   MOVEMENT / INTERACTION
+   =========================================================== */
+const OVER_WALK=new Set([".",",","d","#","=","A","K","V","M","F","P","Z"]);
+const IN_WALK=new Set([".","D"]);
+
+function walkable(map,x,y){
+  const w=map.tiles[0].length,h=map.tiles.length;
+  if(x<0||y<0||x>=w||y>=h) return false;
+  const code=map.tiles[y][x];
+  if(map.kind==="overworld") return OVER_WALK.has(code);
+  return IN_WALK.has(code);
+}
+function entityAt(map,x,y){
+  if(map.boss && !gs.flags[map.boss.flag] && map.boss.x===x&&map.boss.y===y) return {kind:"boss",data:map.boss};
+  const chest=(map.chests||[]).find(c=>c.x===x&&c.y===y && !gs.flags[c.flag]);
+  if(chest) return {kind:"chest",data:chest};
+  const npc=(map.npcs||[]).find(n=>n.x===x&&n.y===y && !(n.kind==="recruit"&&hasParty(n.charId)));
+  if(npc) return {kind:"npc",data:npc};
+  return null;
+}
+
+function dirDelta(dir){ return dir==="up"?[0,-1]:dir==="down"?[0,1]:dir==="left"?[-1,0]:[1,0]; }
+
+function tryStep(dir){
+  if(curMode!=="overworld") return;
+  gs.player.dir=dir;
+  const [dx,dy]=dirDelta(dir);
+  const map=activeMap();
+  const nx=gs.player.x+dx, ny=gs.player.y+dy;
+  const blocker=entityAt(map,nx,ny);
+  if(blocker){ render(); return; } // face them, don't walk through
+  if(!walkable(map,nx,ny)) return;
+  moveAnim={t0:performance.now(),dx,dy,fx:0,fy:0,tx:0,ty:0};
+  gs.player.x=nx; gs.player.y=ny;
+  setTimeout(()=>{ moveAnim=null; checkWarp(); checkEncounter(map); },145);
+}
+
+function checkWarp(){
+  const map=activeMap();
+  if(map.kind!=="overworld"){
+    if(map.tiles[gs.player.y][gs.player.x]==="D"){
+      const to=map.exitTo;
+      warpTo(to.map,to.x,to.y);
+      return;
+    }
+    return;
+  }
+  const code=map.tiles[gs.player.y][gs.player.x];
+  const targets={A:"ashcombe",K:"castellon",V:"willowmere",M:"sunspire",F:"cave",P:"mountainpass",Z:"dragoncastle"};
+  const tgt=targets[code];
+  if(tgt){
+    if(tgt==="dragoncastle" && !gs.flags.hasZenithianGear){
+      toast("A holy ward bars the way - you need the Zenithian legacy first.");
+      gs.player.y+=1; // bounce back
+      return;
+    }
+    const m=MAPS[tgt];
+    warpTo(tgt,m.spawn.x,m.spawn.y);
+  }
+}
+function warpTo(mapId,x,y){
+  gs.player.map=mapId; gs.player.x=x; gs.player.y=y;
+  const m=MAPS[mapId];
+  if(m.kind==="town"){ gs.lastSafe={map:mapId,x,y}; }
+  updateTopbar();
+  save();
+}
+function checkEncounter(map){
+  if(curMode!=="overworld") return;
+  if(map.encRate<=0) return;
+  if(Math.random()<map.encRate){ startBattle(map.pool); }
+}
+
+function toast(msg){
+  const el=document.getElementById("toast");
+  el.textContent=msg; el.hidden=false;
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>{ el.hidden=true; },2600);
+}
+
+function interact(){
+  if(curMode==="dialogue"){ advanceDialogue(); return; }
+  if(curMode==="bigmsg"){ advanceBigMsg(); return; }
+  if(curMode!=="overworld") return;
+  const map=activeMap();
+  const [dx,dy]=dirDelta(gs.player.dir);
+  const fx=gs.player.x+dx, fy=gs.player.y+dy;
+  const ent=entityAt(map,fx,fy);
+  if(!ent) return;
+  if(ent.kind==="npc") handleNpc(ent.data);
+  else if(ent.kind==="chest") handleChest(ent.data);
+  else if(ent.kind==="boss") handleBoss(ent.data);
+}
+
+function handleNpc(npc){
+  if(npc.requiresFlag && !gs.flags[npc.requiresFlag]){
+    showDialogue(npc.name,npc.gateLines||npc.lines[1]);
+    return;
+  }
+  if(npc.kind==="shop"||npc.kind==="shopAndRecruit"){
+    if(npc.kind==="shopAndRecruit" && !hasParty(npc.charId)){
+      runRecruitDialogue(npc);
+      return;
+    }
+    openShop(npc.shop,npc.name);
+    return;
+  }
+  if(npc.kind==="inn"){
+    openInnPrompt(npc);
+    return;
+  }
+  if(npc.kind==="recruit"){
+    runRecruitDialogue(npc);
+    return;
+  }
+  const cond=npc.lines[0];
+  const done = cond ? getFlagPath(cond) : false;
+  showDialogue(npc.name, done? npc.lines[2]||npc.lines[1] : npc.lines[1]);
+  if(cond && !done){ setFlagPath(cond,true); save(); }
+}
+function runRecruitDialogue(npc){
+  const already=getFlagPath(npc.lines[0]);
+  const lines=(already? npc.lines[2] : npc.lines[1]) || npc.lines[1];
+  showDialogue(npc.name, lines, ()=>{
+    if(!already){
+      const nm = npc.charId==="rowan"?"Rowan":npc.charId==="sable"?"Sable":npc.charId==="bram"?"Bram":npc.charId;
+      gs.party.push(newChar(npc.charId));
+      toast(nm+" has joined your party!");
+      save();
+      renderHud();
+    }
+  });
+}
+function getFlagPath(path){
+  if(path==="party.rowan") return hasParty("rowan");
+  if(path==="party.sable") return hasParty("sable");
+  if(path==="party.bram") return hasParty("bram");
+  if(path && path.startsWith("flags.")) return !!gs.flags[path.slice(6)];
+  return false;
+}
+function setFlagPath(path,v){ if(path && path.startsWith("flags.")) gs.flags[path.slice(6)]=v; }
+
+function handleChest(chest){
+  if(chest.requiresFlag && !gs.flags[chest.requiresFlag]){
+    showDialogue("Chest",[chest.lockedMsg||"It's locked."]);
+    return;
+  }
+  gs.flags[chest.flag]=true;
+  const item=ITEMS[chest.item];
+  const qty=chest.qty||1;
+  gs.inventory[chest.item]=(gs.inventory[chest.item]||0)+qty;
+  showDialogue("Chest",["You found "+(qty>1?qty+"x ":"")+item.name+"!"]);
+  save();
+}
+function handleBoss(boss){
+  showDialogue("???", boss.pre, ()=>{ startBattle(null,boss); });
+}
+
+/* ===========================================================
+   DIALOGUE
+   =========================================================== */
+function showDialogue(name,lines,cb){
+  curMode="dialogue";
+  dialogueQueue=lines.slice();
+  dialogueCB=cb||null;
+  document.getElementById("dialogueLayer").hidden=false;
+  document.getElementById("dialogueName").textContent=name;
+  nextDialogueLine();
+}
+function nextDialogueLine(){
+  if(dialogueQueue.length===0){ endDialogue(); return; }
+  let line=dialogueQueue.shift();
+  if(line==="__RECRUIT__" || line==="__RECRUIT_FAELAN__"){
+    nextDialogueLine();
+    return;
+  }
+  document.getElementById("dialogueText").textContent=line;
+}
+function advanceDialogue(){
+  if(dialogueQueue.length>0){ nextDialogueLine(); return; }
+  endDialogue();
+}
+function endDialogue(){
+  document.getElementById("dialogueLayer").hidden=true;
+  curMode="overworld";
+  const cb=dialogueCB; dialogueCB=null;
+  if(cb) cb();
+}
+
+function showBigMsg(title,body,cb){
+  curMode="bigmsg";
+  document.getElementById("bigMsgLayer").hidden=false;
+  document.getElementById("bigMsgTitle").textContent=title;
+  document.getElementById("bigMsgBody").textContent=body;
+  bigMsgCB=cb||null;
+}
+function advanceBigMsg(){}
+document.getElementById("bigMsgBtn").addEventListener("click",()=>{
+  document.getElementById("bigMsgLayer").hidden=true;
+  curMode="overworld";
+  const cb=bigMsgCB; bigMsgCB=null;
+  if(cb) cb();
+});
+
+/* ===========================================================
+   SHOP
+   =========================================================== */
+let shopCtx=null;
+function openShop(shopId,shopName){
+  curMode="shop"; shopCtx={shopId,tab:"buy"};
+  document.getElementById("shopLayer").hidden=false;
+  document.getElementById("shopTitle").textContent=shopName+" - "+goldDiscountNote();
+  renderShopTabs(); renderShopBody();
+}
+function goldDiscountNote(){ return hasParty("bram") ? "10% discount!" : (gs.gold+" gold"); }
+function shopPrice(price){ return hasParty("bram") ? Math.max(1,Math.round(price*0.9)) : price; }
+function renderShopTabs(){
+  const t=document.getElementById("shopTabs"); t.innerHTML="";
+  ["buy","sell"].forEach(tab=>{
+    const b=document.createElement("button");
+    b.textContent=tab==="buy"?"Buy":"Sell";
+    if(shopCtx.tab===tab) b.classList.add("active");
+    b.onclick=()=>{ shopCtx.tab=tab; renderShopTabs(); renderShopBody(); };
+    t.appendChild(b);
+  });
+  const close=document.createElement("button");
+  close.textContent="Leave"; close.style.marginLeft="auto";
+  close.onclick=closeShop;
+  t.appendChild(close);
+}
+function renderShopBody(){
+  const body=document.getElementById("shopBody"); body.innerHTML="";
+  const goldLine=document.createElement("div");
+  goldLine.className="small"; goldLine.style.marginBottom="6px";
+  goldLine.textContent="Your gold: "+gs.gold;
+  body.appendChild(goldLine);
+  if(shopCtx.tab==="buy"){
+    SHOPS[shopCtx.shopId].forEach(id=>{
+      const it=ITEMS[id]; const price=shopPrice(it.price);
+      const row=document.createElement("div"); row.className="listitem";
+      row.innerHTML=`<span class="l">${it.name}</span><span class="r">${itemBlurb(it)} - ${price}g</span>`;
+      row.onclick=()=>{
+        if(gs.gold<price){ toast("Not enough gold."); return; }
+        gs.gold-=price; gs.inventory[id]=(gs.inventory[id]||0)+1;
+        toast("Bought "+it.name+".");
+        renderShopBody(); updateTopbar(); save();
+      };
+      body.appendChild(row);
+    });
+  } else {
+    const owned=Object.keys(gs.inventory).filter(id=>gs.inventory[id]>0 && ITEMS[id]);
+    if(owned.length===0){ body.appendChild(txt("Nothing to sell.")); }
+    owned.forEach(id=>{
+      const it=ITEMS[id]; const price=Math.max(1,Math.floor(it.price*0.4));
+      const row=document.createElement("div"); row.className="listitem";
+      row.innerHTML=`<span class="l">${it.name} x${gs.inventory[id]}</span><span class="r">sell ${price}g</span>`;
+      row.onclick=()=>{
+        gs.inventory[id]--; gs.gold+=price;
+        toast("Sold "+it.name+".");
+        renderShopBody(); updateTopbar(); save();
+      };
+      body.appendChild(row);
+    });
+  }
+}
+function itemBlurb(it){
+  if(it.atk) return "ATK+"+it.atk;
+  if(it.def) return "DEF+"+it.def;
+  if(it.mag) return "MAG+"+it.mag;
+  if(it.heal) return "restores HP";
+  if(it.mp) return "restores MP";
+  if(it.warp) return "return to town";
+  if(it.revive) return "revives ally";
+  return "";
+}
+function txt(s){ const d=document.createElement("div"); d.className="small"; d.textContent=s; return d; }
+function closeShop(){ document.getElementById("shopLayer").hidden=true; curMode="overworld"; save(); }
+
+/* ===========================================================
+   INN
+   =========================================================== */
+function openInnPrompt(npc){
+  showDialogue(npc.name, ["Rest and mend for "+npc.cost+" gold?  (walk away to decline, confirm to accept)"], ()=>{
+    if(gs.gold<npc.cost){ toast("Not enough gold to rest."); return; }
+    gs.gold-=npc.cost;
+    gs.party.forEach(c=>{ c.hp=c.maxHp; c.mp=c.maxMp; c.ko=false; });
+    gs.lastSafe={map:gs.player.map,x:gs.player.x,y:gs.player.y};
+    toast("Your party is fully restored!");
+    updateTopbar(); renderHud(); save();
+  });
+}
+
+/* ===========================================================
+   MENU
+   =========================================================== */
+let menuTab="party";
+function openMenu(){
+  curMode="menu"; menuTab="party";
+  document.getElementById("menuLayer").hidden=false;
+  renderMenuTabs(); renderMenuBody();
+}
+function closeMenu(){ document.getElementById("menuLayer").hidden=true; curMode="overworld"; save(); }
+function renderMenuTabs(){
+  const t=document.getElementById("menuTabs"); t.innerHTML="";
+  [["party","Party"],["items","Items"],["equip","Equip"],["spells","Spells"],["save","Save"]].forEach(([id,label])=>{
+    const b=document.createElement("button"); b.textContent=label;
+    if(menuTab===id) b.classList.add("active");
+    b.onclick=()=>{ menuTab=id; renderMenuTabs(); renderMenuBody(); };
+    t.appendChild(b);
+  });
+  const close=document.createElement("button"); close.textContent="Close"; close.style.marginLeft="auto";
+  close.onclick=closeMenu; t.appendChild(close);
+}
+function renderMenuBody(){
+  const body=document.getElementById("menuBody"); body.innerHTML="";
+  if(menuTab==="party") renderPartyTab(body);
+  else if(menuTab==="items") renderItemsTab(body);
+  else if(menuTab==="equip") renderEquipTab(body);
+  else if(menuTab==="spells") renderSpellsTab(body);
+  else if(menuTab==="save") renderSaveTab(body);
+}
+function renderPartyTab(body){
+  gs.party.forEach(c=>{
+    const card=document.createElement("div"); card.className="charCard";
+    card.innerHTML=`
+      <div class="top"><span>${c.name}</span><span>Lv.${c.level}</span></div>
+      <div class="statline">HP <b>${c.hp}/${c.maxHp}</b></div>
+      <div class="barwrap"><div class="bar hp" style="width:${Math.max(0,100*c.hp/c.maxHp)}%"></div></div>
+      <div class="statline">MP <b>${c.mp}/${c.maxMp}</b></div>
+      <div class="barwrap"><div class="bar mp" style="width:${c.maxMp? Math.max(0,100*c.mp/c.maxMp):0}%"></div></div>
+      <div class="statline"><span>ATK ${effAtk(c)}</span><span>DEF ${effDef(c)}</span><span>AGI ${c.agi}</span><span>MAG ${effMag(c)}</span></div>
+      <div class="small">XP ${c.xp} / ${xpToNext(c.level)} to next level</div>
+      <div class="small">Weapon: ${c.weapon?ITEMS[c.weapon].name:"none"} &nbsp; Armor: ${c.armor?ITEMS[c.armor].name:"none"}</div>
+    `;
+    body.appendChild(card);
+  });
+}
+function renderItemsTab(body){
+  const ids=Object.keys(gs.inventory).filter(id=>gs.inventory[id]>0 && ITEMS[id] && (ITEMS[id].type==="consumable"||ITEMS[id].type==="field"));
+  if(ids.length===0) body.appendChild(txt("No usable items."));
+  ids.forEach(id=>{
+    const it=ITEMS[id];
+    const row=document.createElement("div"); row.className="listitem";
+    row.innerHTML=`<span class="l">${it.name} x${gs.inventory[id]}</span><span class="r">${itemBlurb(it)}</span>`;
+    row.onclick=()=>{ pickTargetForItem(id); };
+    body.appendChild(row);
+  });
+}
+function pickTargetForItem(id){
+  const it=ITEMS[id];
+  if(it.warp){
+    gs.inventory[id]--;
+    warpTo(gs.lastSafe.map,gs.lastSafe.x,gs.lastSafe.y);
+    closeMenu(); toast("The wind carries you home.");
+    return;
+  }
+  const body=document.getElementById("menuBody"); body.innerHTML="";
+  body.appendChild(txt("Use "+it.name+" on:"));
+  gs.party.forEach(c=>{
+    const row=document.createElement("div"); row.className="listitem";
+    row.innerHTML=`<span class="l">${c.name}</span><span class="r">HP ${c.hp}/${c.maxHp}</span>`;
+    row.onclick=()=>{
+      applyItemField(id,c);
+      renderMenuBody();
+    };
+    body.appendChild(row);
+  });
+  const back=document.createElement("button"); back.textContent="Back"; back.style.marginTop="8px";
+  back.onclick=renderMenuBody; body.appendChild(back);
+}
+function applyItemField(id,c){
+  const it=ITEMS[id];
+  if(it.revive){ if(!c.ko) { toast(c.name+" isn't fainted."); return; } c.ko=false; c.hp=Math.max(1,Math.floor(c.maxHp*it.revive)); }
+  else { if(it.heal){ c.hp=Math.min(c.maxHp,c.hp+it.heal); c.ko=c.hp<=0?c.ko:false; } if(it.mp){ c.mp=Math.min(c.maxMp,c.mp+it.mp); } }
+  gs.inventory[id]--;
+  toast("Used "+it.name+" on "+c.name+".");
+  renderHud(); save();
+}
+function renderEquipTab(body){
+  gs.party.forEach(c=>{
+    const wrap=document.createElement("div"); wrap.className="charCard";
+    wrap.innerHTML=`<div class="top"><span>${c.name}</span></div>`;
+    ["weapon","armor"].forEach(slot=>{
+      const label=document.createElement("div"); label.className="small"; label.style.marginTop="4px";
+      label.textContent=(slot==="weapon"?"Weapon: ":"Armor: ")+(c[slot]?ITEMS[c[slot]].name:"none")+"  (tap to change)";
+      label.style.cursor="pointer";
+      label.onclick=()=>showEquipChoices(c,slot,body);
+      wrap.appendChild(label);
+    });
+    body.appendChild(wrap);
+  });
+}
+function showEquipChoices(c,slot,body){
+  body.innerHTML=""; body.appendChild(txt("Choose "+slot+" for "+c.name+":"));
+  const none=document.createElement("div"); none.className="listitem";
+  none.innerHTML=`<span class="l">(unequip)</span>`;
+  none.onclick=()=>{ c[slot]=null; renderMenuBody(); save(); };
+  body.appendChild(none);
+  Object.keys(gs.inventory).forEach(id=>{
+    const it=ITEMS[id];
+    if(!it || it.slot!==slot || (gs.inventory[id]<=0 && c[slot]!==id)) return;
+    const okChar = it.equip==="all" || (Array.isArray(it.equip)&&it.equip.includes(c.id));
+    if(!okChar) return;
+    const row=document.createElement("div"); row.className="listitem";
+    row.innerHTML=`<span class="l">${it.name}</span><span class="r">${itemBlurb(it)} x${gs.inventory[id]}</span>`;
+    row.onclick=()=>{
+      if(c[slot]){ gs.inventory[c[slot]]=(gs.inventory[c[slot]]||0)+1; }
+      c[slot]=id; gs.inventory[id]--;
+      renderMenuBody(); save();
+    };
+    body.appendChild(row);
+  });
+  const back=document.createElement("button"); back.textContent="Back"; back.style.marginTop="8px";
+  back.onclick=renderMenuBody; body.appendChild(back);
+}
+function renderSpellsTab(body){
+  gs.party.filter(c=>c.spells.length).forEach(c=>{
+    const wrap=document.createElement("div"); wrap.className="charCard";
+    wrap.innerHTML=`<div class="top"><span>${c.name}</span><span class="small">MP ${c.mp}/${c.maxMp}</span></div>`;
+    c.spells.forEach(sid=>{
+      const sp=SPELLS[sid];
+      const row=document.createElement("div"); row.className="listitem";
+      row.innerHTML=`<span class="l">${sp.name}</span><span class="r">MP ${sp.mp}</span>`;
+      if(sp.kind==="heal"||sp.kind==="revive"){
+        row.onclick=()=>castFieldSpell(c,sid);
+      } else {
+        row.style.opacity=".6";
+      }
+      wrap.appendChild(row);
+    });
+    body.appendChild(wrap);
+  });
+  if(body.children.length===0) body.appendChild(txt("No spellcasters yet."));
+}
+function castFieldSpell(caster,sid){
+  const sp=SPELLS[sid];
+  if(caster.mp<sp.mp){ toast("Not enough MP."); return; }
+  const body=document.getElementById("menuBody"); body.innerHTML="";
+  body.appendChild(txt("Cast "+sp.name+" on:"));
+  gs.party.forEach(c=>{
+    const row=document.createElement("div"); row.className="listitem";
+    row.innerHTML=`<span class="l">${c.name}</span><span class="r">HP ${c.hp}/${c.maxHp}</span>`;
+    row.onclick=()=>{
+      caster.mp-=sp.mp;
+      if(sp.kind==="revive"){ if(c.ko){ c.ko=false; c.hp=Math.max(1,Math.floor(c.maxHp*sp.power)); } }
+      else { c.hp=Math.min(c.maxHp,c.hp+sp.power); c.ko=false; }
+      toast(sp.name+" cast on "+c.name+".");
+      renderMenuBody(); renderHud(); save();
+    };
+    body.appendChild(row);
+  });
+  const back=document.createElement("button"); back.textContent="Back"; back.style.marginTop="8px";
+  back.onclick=renderMenuBody; body.appendChild(back);
+}
+function renderSaveTab(body){
+  body.appendChild(txt("Your journey auto-saves as you travel."));
+  const b=document.createElement("button"); b.textContent="Save Now"; b.className="primary"; b.style.marginTop="8px";
+  b.onclick=()=>{ save(); toast("Game saved."); };
+  body.appendChild(b);
+  const b2=document.createElement("button"); b2.textContent="Quit to Title"; b2.style.marginTop="8px"; b2.style.marginLeft="8px";
+  b2.onclick=()=>{ save(); returnToTitle(); };
+  body.appendChild(b2);
+}
+
+/* ===========================================================
+   BATTLE
+   =========================================================== */
+function pickPool(poolId){
+  const ids=POOLS[poolId]||POOLS.overLow;
+  const n=1+Math.floor(Math.random()*3);
+  const group=[];
+  for(let i=0;i<n;i++) group.push(ids[Math.floor(Math.random()*ids.length)]);
+  return group;
+}
+function startBattle(poolId,bossEntry){
+  curMode="battle";
+  document.getElementById("battleLayer").hidden=false;
+  let enemyIds = bossEntry? [bossEntry.id] : pickPool(poolId);
+  battle={
+    boss:bossEntry||null,
+    enemies:enemyIds.map((id,i)=>{
+      const base=ENEMIES[id];
+      return {id,uid:i,name:base.name+(enemyIds.filter(x=>x===id).length>1?" "+String.fromCharCode(65+enemyIds.slice(0,i).filter(x=>x===id).length):""),
+        hp:base.hp,maxHp:base.hp,atk:base.atk,def:base.def,agi:base.agi,xp:base.xp,gold:base.gold,sprite:base.sprite,skill:base.skill,phase2:false};
+    }),
+    log:[],
+    turnIdx:0,
+    acting:null,
+    defendSet:new Set()
+  };
+  gs.party.forEach(c=>c.defending=false);
+  logBattle(bossEntry? "" : "A wild encounter begins!");
+  renderBattleLog(); renderBattleBody();
+}
+function logBattle(msg){ if(msg) battle.log.push(msg); if(battle.log.length>4) battle.log.shift(); }
+function renderBattleLog(){ document.getElementById("battleLog").innerHTML=battle.log.map(l=>"&bull; "+l).join("<br>"); }
+
+function renderBattleScene(){
+  ctx.fillStyle="#161027"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#0f0a1c"; ctx.fillRect(0,canvas.height-60,canvas.width,60);
+  const n=battle.enemies.length;
+  const spacing=canvas.width/(n+1);
+  battle.enemies.forEach((e,i)=>{
+    const cx=spacing*(i+1), cy=canvas.height/2+30;
+    if(e.hp>0) drawActor(cx,cy,e.sprite,1.2,"down",false);
+    ctx.fillStyle= e.hp>0? "#f2e6c9":"#5a5a5a";
+    ctx.font="16px VT323, monospace";
+    ctx.textAlign="center";
+    ctx.fillText(e.name+(e.hp>0? "  "+e.hp+"/"+e.maxHp : " (defeated)"), cx, cy+40);
+  });
+}
+
+function aliveEnemies(){ return battle.enemies.filter(e=>e.hp>0); }
+function aliveParty(){ return gs.party.filter(c=>!c.ko); }
+
+function renderBattleBody(){
+  const body=document.getElementById("battleBody"); body.innerHTML="";
+  if(!battle) return;
+  if(!battle.acting){
+    battle.acting = aliveParty()[0] || null;
+  }
+  if(!battle.acting){ return; }
+  const c=battle.acting;
+  const head=document.createElement("div"); head.className="small"; head.style.marginBottom="6px";
+  head.textContent=c.name+"'s turn - HP "+c.hp+"/"+c.maxHp+(c.mp||c.maxMp? "  MP "+c.mp+"/"+c.maxMp : "");
+  body.appendChild(head);
+  const row=document.createElement("div"); row.style.display="flex"; row.style.flexWrap="wrap"; row.style.gap="6px";
+  mkBtn(row,"Fight",()=>chooseTargetEnemy(act=>{ queueAction(c,{type:"attack",target:act}); }));
+  if(c.spells.length) mkBtn(row,"Spell",()=>showSpellMenu(c));
+  mkBtn(row,"Item",()=>showItemMenu(c));
+  mkBtn(row,"Defend",()=>{ queueAction(c,{type:"defend"}); });
+  mkBtn(row,"Flee",()=>attemptFlee());
+  body.appendChild(row);
+}
+function mkBtn(parent,label,fn){ const b=document.createElement("button"); b.textContent=label; b.onclick=fn; parent.appendChild(b); return b; }
+
+function chooseTargetEnemy(cb){
+  const body=document.getElementById("battleBody"); body.innerHTML="";
+  body.appendChild(txt("Choose a target:"));
+  aliveEnemies().forEach(e=>{
+    const row=document.createElement("div"); row.className="listitem";
+    row.innerHTML=`<span class="l">${e.name}</span><span class="r">${e.hp}/${e.maxHp}</span>`;
+    row.onclick=()=>cb(e);
+    body.appendChild(row);
+  });
+  const back=document.createElement("button"); back.textContent="Back"; back.style.marginTop="6px";
+  back.onclick=renderBattleBody; body.appendChild(back);
+}
+function showSpellMenu(c){
+  const body=document.getElementById("battleBody"); body.innerHTML="";
+  body.appendChild(txt(c.name+"'s spells (MP "+c.mp+"/"+c.maxMp+"):"));
+  c.spells.forEach(sid=>{
+    const sp=SPELLS[sid];
+    const row=document.createElement("div"); row.className="listitem";
+    if(c.mp<sp.mp) row.style.opacity=".45";
+    row.innerHTML=`<span class="l">${sp.name}</span><span class="r">MP ${sp.mp}</span>`;
+    row.onclick=()=>{
+      if(c.mp<sp.mp){ toast("Not enough MP."); return; }
+      if(sp.target==="enemy"){
+        chooseTargetEnemy(e=>queueAction(c,{type:"spell",spell:sid,target:e}));
+      } else if(sp.target==="allEnemies"){
+        queueAction(c,{type:"spell",spell:sid,target:null});
+      } else if(sp.target==="ally"){
+        chooseTargetAlly(a=>queueAction(c,{type:"spell",spell:sid,target:a}));
+      } else if(sp.target==="allAllies"){
+        queueAction(c,{type:"spell",spell:sid,target:null});
+      }
+    };
+    body.appendChild(row);
+  });
+  const back=document.createElement("button"); back.textContent="Back"; back.style.marginTop="6px";
+  back.onclick=renderBattleBody; body.appendChild(back);
+}
+function chooseTargetAlly(cb){
+  const body=document.getElementById("battleBody"); body.innerHTML="";
+  body.appendChild(txt("Choose an ally:"));
+  gs.party.forEach(c=>{
+    const row=document.createElement("div"); row.className="listitem";
+    row.innerHTML=`<span class="l">${c.name}${c.ko?" (fainted)":""}</span><span class="r">${c.hp}/${c.maxHp}</span>`;
+    row.onclick=()=>cb(c);
+    body.appendChild(row);
+  });
+  const back=document.createElement("button"); back.textContent="Back"; back.style.marginTop="6px";
+  back.onclick=renderBattleBody; body.appendChild(back);
+}
+function showItemMenu(c){
+  const body=document.getElementById("battleBody"); body.innerHTML="";
+  const ids=Object.keys(gs.inventory).filter(id=>gs.inventory[id]>0 && ITEMS[id] && ITEMS[id].type==="consumable");
+  if(ids.length===0) body.appendChild(txt("No usable items."));
+  ids.forEach(id=>{
+    const it=ITEMS[id];
+    const row=document.createElement("div"); row.className="listitem";
+    row.innerHTML=`<span class="l">${it.name} x${gs.inventory[id]}</span><span class="r">${itemBlurb(it)}</span>`;
+    row.onclick=()=>{
+      chooseTargetAlly(a=>queueAction(c,{type:"item",item:id,target:a}));
+    };
+    body.appendChild(row);
+  });
+  const back=document.createElement("button"); back.textContent="Back"; back.style.marginTop="6px";
+  back.onclick=renderBattleBody; body.appendChild(back);
+}
+
+let pendingActions=[];
+function queueAction(actor,action){
+  pendingActions.push({actor,action});
+  const remaining=aliveParty().filter(c=>!pendingActions.find(p=>p.actor===c));
+  if(remaining.length>0){ battle.acting=remaining[0]; renderBattleBody(); }
+  else { battle.acting=null; resolveRound(); }
+}
+function attemptFlee(){
+  const partyAgi=avg(gs.party.map(c=>c.agi));
+  const enemyAgi=avg(battle.enemies.map(e=>e.agi));
+  const anyBoss=battle.enemies.some(e=>ENEMIES[e.id].boss);
+  if(anyBoss){ logBattle("There is no escaping this battle!"); renderBattleLog(); renderBattleBody(); return; }
+  const chance=Math.max(.15,Math.min(.9,.5+(partyAgi-enemyAgi)*.02));
+  if(Math.random()<chance){
+    logBattle("You fled from battle.");
+    renderBattleLog();
+    endBattle(false,true);
+  } else {
+    logBattle("Couldn't get away!");
+    pendingActions=[]; // enemies still act
+    resolveEnemyOnly();
+  }
+}
+function avg(arr){ return arr.reduce((a,b)=>a+b,0)/Math.max(1,arr.length); }
+
+function resolveEnemyOnly(){
+  const order=aliveEnemies().slice().sort((a,b)=>b.agi-a.agi);
+  order.forEach(e=>enemyAct(e));
+  postRound();
+}
+
+function resolveRound(){
+  const acts=pendingActions.slice(); pendingActions=[];
+  const combined=[
+    ...acts.map(a=>({side:"party",agi:a.actor.agi,run:()=>runPartyAction(a.actor,a.action)})),
+    ...aliveEnemies().map(e=>({side:"enemy",agi:e.agi,run:()=>enemyAct(e)}))
+  ];
+  combined.sort((a,b)=>b.agi-a.agi + (Math.random()-0.5));
+  gs.party.forEach(c=>c.defending=false);
+  runSequence(combined,0);
+}
+function runSequence(list,i){
+  if(i>=list.length){ postRound(); return; }
+  const step=list[i];
+  if((step.side==="party") ){ }
+  step.run();
+  renderBattleLog();
+  if(checkBattleEnd()) return;
+  setTimeout(()=>runSequence(list,i+1),260);
+}
+
+function dmgFormula(atk,def,defending){
+  let base=atk*(0.9+Math.random()*0.3)-def*0.5;
+  base=Math.max(1,Math.round(base));
+  if(Math.random()<0.06) base=Math.round(base*1.5);
+  if(defending) base=Math.max(1,Math.round(base*0.5));
+  return base;
+}
+function runPartyAction(actor,action){
+  if(actor.ko) return;
+  if(action.type==="attack"){
+    if(action.target.hp<=0){ const alt=aliveEnemies()[0]; if(!alt) return; action.target=alt; }
+    const d=dmgFormula(effAtk(actor),action.target.def,false);
+    action.target.hp=Math.max(0,action.target.hp-d);
+    logBattle(actor.name+" strikes "+action.target.name+" for "+d+" damage.");
+    if(actor.id==="bram" && Math.random()<0.12){ const g=2+Math.floor(Math.random()*5); gs.gold+=g; logBattle("Bram scavenges "+g+" gold in the chaos!"); }
+    if(action.target.hp<=0) logBattle(action.target.name+" is defeated!");
+  } else if(action.type==="defend"){
+    actor.defending=true;
+    logBattle(actor.name+" braces for impact.");
+  } else if(action.type==="spell"){
+    const sp=SPELLS[action.spell];
+    actor.mp-=sp.mp;
+    castBattleSpell(actor,sp,action.target);
+  } else if(action.type==="item"){
+    const it=ITEMS[action.item];
+    gs.inventory[action.item]--;
+    if(it.revive){ if(action.target.ko){ action.target.ko=false; action.target.hp=Math.max(1,Math.floor(action.target.maxHp*it.revive)); logBattle(action.target.name+" is revived!"); } }
+    else { if(it.heal){ action.target.hp=Math.min(action.target.maxHp,action.target.hp+it.heal); } if(it.mp){ action.target.mp=Math.min(action.target.maxMp,action.target.mp+it.mp); } logBattle(actor.name+" uses "+it.name+" on "+action.target.name+"."); }
+  }
+  renderHud();
+}
+function castBattleSpell(actor,sp,target){
+  if(sp.kind==="heal"){
+    target.hp=Math.min(target.maxHp,target.hp+sp.power);
+    logBattle(actor.name+" casts "+sp.name+" - "+target.name+" recovers "+sp.power+" HP.");
+  } else if(sp.kind==="healAll"){
+    gs.party.forEach(c=>{ if(!c.ko) c.hp=Math.min(c.maxHp,c.hp+sp.power); });
+    logBattle(actor.name+" casts "+sp.name+" - the whole party is soothed.");
+  } else if(sp.kind==="revive"){
+    if(target.ko){ target.ko=false; target.hp=Math.max(1,Math.floor(target.maxHp*sp.power)); logBattle(actor.name+" casts "+sp.name+" - "+target.name+" rises again!"); }
+    else logBattle(actor.name+"'s "+sp.name+" fizzles - "+target.name+" wasn't down.");
+  } else if(sp.kind==="dmg"){
+    if(target.hp<=0){ const alt=aliveEnemies()[0]; if(!alt) return; target=alt; }
+    const d=Math.max(1,Math.round(sp.power+effMag(actor)*0.5-target.def*0.2));
+    target.hp=Math.max(0,target.hp-d);
+    logBattle(actor.name+" casts "+sp.name+" on "+target.name+" for "+d+" damage.");
+    if(target.hp<=0) logBattle(target.name+" is defeated!");
+  } else if(sp.kind==="dmgAll"){
+    aliveEnemies().forEach(e=>{
+      const d=Math.max(1,Math.round(sp.power+effMag(actor)*0.4-e.def*0.2));
+      e.hp=Math.max(0,e.hp-d);
+      logBattle(e.name+" takes "+d+" damage.");
+    });
+  } else if(sp.kind==="debuff"){
+    if(target.hp>0){ target.def=Math.max(0,Math.round(target.def*(1-sp.power))); logBattle(actor.name+" weakens "+target.name+"'s defense!"); }
+  }
+}
+function enemyAct(e){
+  if(e.hp<=0) return;
+  const targets=aliveParty();
+  if(targets.length===0) return;
+  const useSkill = e.skill && Math.random()<e.skill.chance;
+  if(useSkill){
+    const dmgTargets = e.skill.targets==="all"? targets : [targets[Math.floor(Math.random()*targets.length)]];
+    dmgTargets.forEach(t=>{
+      const d=dmgFormula(e.atk*e.skill.dmgMult,effDef(t),t.defending);
+      t.hp=Math.max(0,t.hp-d);
+      if(t.hp<=0) t.ko=true;
+    });
+    logBattle(e.name+" uses "+e.skill.name+"! "+dmgTargets.map(t=>t.name+" takes damage").join(", ")+".");
+  } else {
+    const t=targets[Math.floor(Math.random()*targets.length)];
+    const d=dmgFormula(e.atk,effDef(t),t.defending);
+    t.hp=Math.max(0,t.hp-d);
+    if(t.hp<=0){ t.ko=true; logBattle(t.name+" is defeated!"); }
+    logBattle(e.name+" hits "+t.name+" for "+d+" damage.");
+  }
+  renderHud();
+  // boss phase check
+  if(ENEMIES[e.id].boss && e.id==="malkanther" && !e.phase2 && e.hp<=e.maxHp*0.5){
+    e.phase2=true; e.atk=Math.round(e.atk*1.3); e.def=Math.round(e.def*1.15);
+    logBattle("Malkanther's form twists into something monstrous! His power surges!");
+  }
+}
+
+function postRound(){
+  renderBattleLog();
+  if(checkBattleEnd()) return;
+  battle.acting=null;
+  renderBattleBody();
+}
+function checkBattleEnd(){
+  if(aliveEnemies().length===0){ endBattle(true,false); return true; }
+  if(aliveParty().length===0){ endBattle(false,false); return true; }
+  return false;
+}
+
+function endBattle(won,fled){
+  if(won){
+    let xp=0,gold=0;
+    battle.enemies.forEach(e=>{ xp+=e.xp; gold+=e.gold; });
+    gs.gold+=gold;
+    const alive=gs.party.filter(c=>!c.ko);
+    let levelUps=[];
+    alive.forEach(c=>{
+      c.xp+=xp;
+      while(c.xp>=xpToNext(c.level)){
+        c.xp-=xpToNext(c.level);
+        c.level++;
+        const g=GROWTH[c.id];
+        c.maxHp+=g.hp; c.maxMp+=g.mp; c.atk+=g.atk; c.def+=g.def; c.agi+=g.agi; c.mag+=g.mag;
+        c.hp=c.maxHp; c.mp=c.maxMp;
+        const learn=(SPELL_LEARN[c.id]||{})[c.level];
+        if(learn && !c.spells.includes(learn)) c.spells.push(learn);
+        levelUps.push(c.name+" reached level "+c.level+"!"+(learn?" Learned "+SPELLS[learn].name+"!":""));
+      }
+    });
+    const bossFlag=battle.boss;
+    document.getElementById("battleLayer").hidden=true;
+    curMode="overworld";
+    let summary="Victory! Gained "+xp+" XP and "+gold+" gold."+(levelUps.length? "\n"+levelUps.join("\n"):"");
+    if(bossFlag){
+      gs.flags[bossFlag.flag]=true;
+      if(bossFlag.id==="malkanther"){
+        showBigMsg("The Dragon Lord Falls",
+          "Malkanther collapses into ash and shadow. The curse over Aldan begins to lift.\n\nYou have completed Zenithian Chronicles. The realm remembers your name.",
+          ()=>{ save(); });
+        return;
+      }
+      showDialogue("Victory",[summary].concat(bossFlag.post||[]),()=>{
+        if(bossFlag.id==="bogmire"){
+          gs.party.push(newChar("faelan"));
+          toast("Faelan has joined your party!");
+        }
+        if(bossFlag.id==="frostwyrm"){
+          gs.flags.frostwyrmDown=true;
+        }
+        save(); renderHud();
+      });
+      return;
+    }
+    showDialogue("Victory",[summary]);
+    save(); renderHud();
+  } else if(fled){
+    document.getElementById("battleLayer").hidden=true;
+    curMode="overworld";
+  } else {
+    document.getElementById("battleLayer").hidden=true;
+    const lostGold=Math.floor(gs.gold*0.1);
+    gs.gold-=lostGold;
+    gs.party.forEach(c=>{ c.ko=false; c.hp=Math.max(1,Math.floor(c.maxHp*0.5)); c.mp=Math.floor(c.maxMp*0.5); });
+    warpTo(gs.lastSafe.map,gs.lastSafe.x,gs.lastSafe.y);
+    curMode="overworld";
+    renderHud(); updateTopbar();
+    showBigMsg("Defeated...","Your party is overwhelmed, but a lingering ward drags you back to safety. You lose "+lostGold+" gold, but your journey continues.",()=>{ save(); });
+  }
+  battle=null;
+}
+
+/* ===========================================================
+   HUD
+   =========================================================== */
+function renderHud(){
+  const hud=document.getElementById("hud"); hud.innerHTML="";
+  gs.party.forEach(c=>{
+    const card=document.createElement("div"); card.className="hudCard"+(c.ko?" dead":"");
+    card.innerHTML=`
+      <div class="nm"><span>${c.name}</span><span class="lv">Lv${c.level}</span></div>
+      <div class="barwrap"><div class="bar hp" style="width:${Math.max(0,100*c.hp/c.maxHp)}%"></div></div>
+      <div class="barwrap"><div class="bar mp" style="width:${c.maxMp?Math.max(0,100*c.mp/c.maxMp):0}%"></div></div>
+    `;
+    hud.appendChild(card);
+  });
+}
+function updateTopbar(){
+  document.getElementById("locName").textContent=activeMap().name;
+  document.getElementById("goldCt").textContent=gs.gold;
+}
+
+/* ===========================================================
+   TITLE SCREEN ART
+   =========================================================== */
+function drawTitleArt(){
+  const c=document.getElementById("titleArt");
+  const tctx=c.getContext("2d");
+  const g=tctx.createLinearGradient(0,0,0,c.height);
+  g.addColorStop(0,"#241733"); g.addColorStop(1,"#0f0a1c");
+  tctx.fillStyle=g; tctx.fillRect(0,0,c.width,c.height);
+  for(let i=0;i<40;i++){
+    tctx.fillStyle="rgba(224,182,77,"+(0.15+Math.random()*0.5)+")";
+    tctx.fillRect(Math.random()*c.width, Math.random()*c.height*0.6, 2,2);
+  }
+  tctx.fillStyle="#241017";
+  tctx.beginPath(); tctx.moveTo(c.width*0.3,c.height*0.95); tctx.lineTo(c.width*0.42,c.height*0.55); tctx.lineTo(c.width*0.5,c.height*0.95); tctx.fill();
+  tctx.beginPath(); tctx.moveTo(c.width*0.5,c.height*0.95); tctx.lineTo(c.width*0.62,c.height*0.45); tctx.lineTo(c.width*0.76,c.height*0.95); tctx.fill();
+  if(dungeonImg.complete && dungeonImg.naturalWidth>0){
+    drawActor(c.width*0.5,c.height*0.92,ENEMIES.malkanther.sprite,1.6,"down",false,tctx);
+  }
+}
+
+/* ===========================================================
+   INPUT
+   =========================================================== */
+const KEYMAP={ArrowUp:"up",ArrowDown:"down",ArrowLeft:"left",ArrowRight:"right",w:"up",s:"down",a:"left",d:"right",W:"up",S:"down",A:"left",D:"right"};
+document.addEventListener("keydown",e=>{
+  if(KEYMAP[e.key]){
+    e.preventDefault();
+    const dir=KEYMAP[e.key];
+    if(heldDir!==dir){ heldDir=dir; tryStep(dir); clearInterval(moveTimer); moveTimer=setInterval(()=>tryStep(dir),175); }
+  } else if(e.key==="z"||e.key==="Z"||e.key==="Enter"||e.key===" "){
+    e.preventDefault(); interact();
+  } else if(e.key==="x"||e.key==="X"||e.key==="Escape"){
+    e.preventDefault();
+    if(curMode==="menu") closeMenu();
+    else if(curMode==="shop") closeShop();
+    else if(curMode==="overworld") openMenu();
+  }
+});
+document.addEventListener("keyup",e=>{
+  const dir=KEYMAP[e.key];
+  if(dir && dir===heldDir){ heldDir=null; clearInterval(moveTimer); }
+});
+function bindHold(el,fn,upFn){
+  el.addEventListener("pointerdown",e=>{ e.preventDefault(); fn(); });
+  el.addEventListener("pointerup",e=>{ if(upFn) upFn(); });
+  el.addEventListener("pointerleave",e=>{ if(upFn) upFn(); });
+}
+function dirHold(dir){ return ()=>{ if(heldDir!==dir){ heldDir=dir; tryStep(dir); clearInterval(moveTimer); moveTimer=setInterval(()=>tryStep(dir),175); } }; }
+function dirRelease(dir){ return ()=>{ if(heldDir===dir){ heldDir=null; clearInterval(moveTimer); } }; }
+bindHold(document.getElementById("dU"),dirHold("up"),dirRelease("up"));
+bindHold(document.getElementById("dD"),dirHold("down"),dirRelease("down"));
+bindHold(document.getElementById("dL"),dirHold("left"),dirRelease("left"));
+bindHold(document.getElementById("dR"),dirHold("right"),dirRelease("right"));
+document.getElementById("btnA").addEventListener("click",interact);
+document.getElementById("btnB").addEventListener("click",()=>{
+  if(curMode==="menu") closeMenu(); else if(curMode==="shop") closeShop();
+});
+document.getElementById("btnMenu").addEventListener("click",()=>{
+  if(curMode==="overworld") openMenu(); else if(curMode==="menu") closeMenu();
+});
+
+/* ===========================================================
+   BOOT / GAME LOOP
+   =========================================================== */
+function startNewGame(){
+  const nameInput=document.getElementById("nameInput");
+  const name=(nameInput.value||"").trim().slice(0,12) || "Aldric";
+  gs=defaultState();
+  gs.party[0].name=name;
+  enterGame();
+  save();
+}
+function continueGame(data){
+  gs=data;
+  gs.party.forEach(c=>{ if(c.defending===undefined) c.defending=false; });
+  enterGame();
+}
+function enterGame(){
+  document.getElementById("titleScreen").hidden=true;
+  document.getElementById("gameWrap").hidden=false;
+  curMode="overworld";
+  updateTopbar(); renderHud();
+  loop();
+}
+function returnToTitle(){
+  document.getElementById("gameWrap").hidden=true;
+  document.getElementById("titleScreen").hidden=false;
+  document.getElementById("btnContinue").hidden=!hasSave();
+}
+function loop(){ render(); requestAnimationFrame(loop); }
+
+drawTitleArt();
+document.getElementById("btnNewGame").addEventListener("click",startNewGame);
+document.getElementById("btnContinue").addEventListener("click",()=>{ const d=loadSave(); if(d) continueGame(d); });
+document.getElementById("nameInput").addEventListener("keydown",e=>{ if(e.key==="Enter") startNewGame(); });
+if(hasSave()) document.getElementById("btnContinue").hidden=false;
+
+function bootFromHot(data){
+  if(data && data.gs){
+    gs=data.gs;
+    gs.party.forEach(c=>{ if(c.defending===undefined) c.defending=false; });
+    enterGame();
+  }
+}
+if(window.claude?.hot?.ready){ window.claude.hot.ready((data)=>{ if(data && data.gs) bootFromHot(data); }); }
+</script>

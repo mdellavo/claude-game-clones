@@ -1,0 +1,13 @@
+{
+  "name": "tidebreaker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tidebreaker - an arcade jet-ski racer for the browser (WebGL / three.js)",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8064"
+  },
+  "dependencies": {
+    "three": "0.186.0"
+  }
+}
