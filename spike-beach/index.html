@@ -1,0 +1,917 @@
+<meta charset="utf-8">
+<title>Spike Beach '89</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&family=Russo+One&family=Saira+Semi+Condensed:wght@400;600;700&display=swap">
+<style>
+:root{
+  --sand:#f3d9a4; --dusk:#1b2a4a; --dusk2:#253a66; --magenta:#e0368b; --sunset:#ff7a45; --teal:#1fb5b0; --white:#fffaf0;
+  --logo:"Racing Sans One","Arial Black",Impact,sans-serif;
+  --num:"Russo One","Arial Black",sans-serif;
+  --body:"Saira Semi Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:#f2a66b;color:var(--white);overflow:hidden;font-family:var(--body)}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+.panel{background:linear-gradient(160deg,var(--dusk2),var(--dusk));border-left:6px solid var(--magenta);box-shadow:0 14px 40px rgba(27,42,74,.45)}
+.screen{position:fixed;inset:0;z-index:10;display:flex;align-items:center;padding:24px 16px;overflow:auto;background:linear-gradient(90deg,rgba(27,42,74,.55),rgba(27,42,74,0) 65%)}
+.card{max-width:520px;margin-left:clamp(0px,6vw,96px);padding:26px 30px 24px;display:flex;flex-direction:column;gap:14px}
+.eyebrow{font-family:var(--num);font-size:12px;letter-spacing:.2em;color:var(--teal)}
+.logo{font-family:var(--logo);font-weight:400;font-style:italic;font-size:clamp(50px,8vw,84px);line-height:.9;margin:0;transform:skewX(-8deg);
+  background:linear-gradient(180deg,#fff 0%,#ffe2b0 42%,var(--sunset) 52%,var(--magenta) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(3px 3px 0 var(--dusk)) drop-shadow(0 0 1px var(--dusk))}
+.logo small{display:block;font-size:.5em;letter-spacing:.04em}
+h2{font-family:var(--logo);font-weight:400;font-size:44px;margin:0;line-height:1;color:var(--sunset)}
+.lede{font-size:18px;line-height:1.4;margin:0;max-width:60ch;color:#e8ecf6}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0;font-size:16px}
+.keys dt{font-family:var(--num);font-size:12px;letter-spacing:.06em;color:var(--sunset);white-space:nowrap;align-self:center}
+.keys dd{margin:0;color:#dfe5f2}
+.opts{display:flex;flex-wrap:wrap;gap:12px 22px}
+.opt{display:flex;flex-direction:column;gap:4px;font-family:var(--num);font-size:11px;letter-spacing:.14em;color:var(--teal)}
+.seg{display:flex;border:2px solid var(--teal)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{font-family:var(--num);font-size:14px;letter-spacing:.04em;color:#dfe5f2;padding:6px 12px;cursor:pointer}
+.seg input:checked+label{background:var(--teal);color:var(--dusk)}
+.seg input:focus-visible+label{outline:2px solid var(--white);outline-offset:-4px}
+.btn{align-self:flex-start;font-family:var(--logo);font-style:italic;font-size:26px;color:var(--white);background:linear-gradient(180deg,var(--sunset),var(--magenta));border:0;
+  padding:8px 28px 10px;cursor:pointer;transform:skewX(-10deg);box-shadow:5px 5px 0 var(--dusk),5px 5px 0 2px var(--teal)}
+.btn:hover{filter:brightness(1.1)}
+.btn:disabled{opacity:.6;cursor:wait}
+.btn:focus-visible{outline:3px solid var(--teal);outline-offset:6px}
+.fine{font-size:14px;margin:0;color:#b9c3dc}
+.big{font-family:var(--num);font-size:56px;line-height:1;font-variant-numeric:tabular-nums}
+.big span{color:var(--sunset)}
+
+#hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+#board{position:absolute;left:50%;top:calc(10px + env(safe-area-inset-top,0px));transform:translateX(-50%) skewX(-10deg);display:flex;align-items:stretch;
+  font-family:var(--num);box-shadow:0 8px 24px rgba(27,42,74,.4)}
+#board .tm{display:flex;align-items:center;gap:10px;padding:6px 14px;background:var(--dusk);font-size:13px;letter-spacing:.08em;white-space:nowrap}
+#board .tm b{font-size:30px;font-weight:400;min-width:1.4ch;text-align:center;font-variant-numeric:tabular-nums}
+#board .t0{border-bottom:4px solid var(--sunset)} #board .t1{border-bottom:4px solid var(--teal)}
+#board .mid{background:var(--magenta);display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4px 10px;font-size:10px;letter-spacing:.14em}
+#board .mid span{font-size:18px;letter-spacing:0}
+.srv{width:12px;height:12px;border-radius:50%;background:#ffe14a;box-shadow:0 0 0 2px var(--dusk2);visibility:hidden}
+.srv.on{visibility:visible}
+#hint{position:absolute;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(27,42,74,.82);padding:7px 16px;
+  font-size:16px;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
+#hint b{font-family:var(--num);font-weight:400;color:var(--sunset)}
+#banner{position:fixed;left:0;right:0;top:30%;text-align:center;z-index:6;pointer-events:none;font-family:var(--logo);font-style:italic;font-size:clamp(40px,8vw,88px);line-height:1;
+  color:var(--white);text-shadow:4px 4px 0 var(--magenta),8px 8px 0 var(--dusk);transform:skewX(-8deg)}
+#banner small{display:block;font-family:var(--num);font-style:normal;font-size:.26em;letter-spacing:.2em;color:var(--dusk);text-shadow:none;margin-top:10px}
+#banner.show{animation:ban .35s cubic-bezier(.2,1.6,.4,1)}
+@keyframes ban{from{opacity:0;transform:skewX(-8deg) scale(.5)}}
+
+#touch{position:fixed;inset:auto 0 0 0;height:190px;z-index:7;pointer-events:none}
+#stick{position:absolute;left:22px;bottom:calc(24px + env(safe-area-inset-bottom,0px));width:124px;height:124px;border-radius:50%;border:2px solid rgba(27,42,74,.6);background:rgba(27,42,74,.3);pointer-events:auto;touch-action:none}
+#nub{position:absolute;left:38px;top:38px;width:44px;height:44px;border-radius:50%;background:var(--sunset)}
+.tb{position:absolute;pointer-events:auto;touch-action:none;width:78px;height:78px;border-radius:50%;font-family:var(--num);font-size:14px;color:var(--white);border:3px solid var(--dusk)}
+#tHit{right:20px;bottom:calc(26px + env(safe-area-inset-bottom,0px));background:var(--magenta)}
+#tJump{right:108px;bottom:calc(70px + env(safe-area-inset-bottom,0px));background:var(--teal)}
+body.touch #hint{bottom:calc(170px + env(safe-area-inset-bottom,0px))}
+
+@media (max-width:640px){ .card{margin-left:0;padding:20px} .screen{align-items:flex-start} #board .tm .nm{display:none} #hint{font-size:14px} }
+@media (prefers-reduced-motion:reduce){#banner.show{animation:none}}
+</style>
+
+<canvas id="gl" aria-label="Spike Beach volleyball court"></canvas>
+
+<div id="hud" hidden>
+  <div id="board">
+    <div class="tm t0"><span class="nm">SAND SHARKS</span><i class="srv" id="sv0"></i><b id="s0">0</b></div>
+    <div class="mid">TO<span id="toN">11</span></div>
+    <div class="tm t1"><b id="s1">0</b><i class="srv" id="sv1"></i><span class="nm">SURF KINGS</span></div>
+  </div>
+  <div id="hint"></div>
+</div>
+<div id="banner" aria-live="polite"></div>
+
+<section class="screen" id="title">
+  <div class="card panel">
+    <div class="eyebrow">2-ON-2 BEACH VOLLEYBALL · VENICE, CA</div>
+    <h1 class="logo">Spike Beach<small>'89 Sunset Open</small></h1>
+    <p class="lede">You and Rico are the Sand Sharks. Dig it, set it, then get up and spike it past the Surf Kings before the sun goes down.</p>
+    <dl class="keys">
+      <dt>ARROWS · WASD</dt><dd>Move. Get under the ball and you'll dig it automatically</dd>
+      <dt>K · X · SPACE</dt><dd>Jump to spike, or to block at the net</dd>
+      <dt>J · Z</dt><dd>Spike while in the air. On the ground, dive for a ball you can't reach</dd>
+      <dt>AIM</dt><dd>Hold a direction as you hit to aim the spike or serve</dd>
+      <dt>SERVE</dt><dd>J for a floater, K for a jump serve</dd>
+    </dl>
+    <div class="opts">
+      <div class="opt">GAME TO
+        <div class="seg" role="radiogroup" aria-label="Game to">
+          <input type="radio" name="pts" id="pts7" value="7"><label for="pts7">7</label>
+          <input type="radio" name="pts" id="pts11" value="11" checked><label for="pts11">11</label>
+          <input type="radio" name="pts" id="pts15" value="15"><label for="pts15">15</label>
+        </div>
+      </div>
+      <div class="opt">OPPONENTS
+        <div class="seg" role="radiogroup" aria-label="Opponents">
+          <input type="radio" name="lvl" id="lvlR" value="rookie" checked><label for="lvlR">ROOKIE</label>
+          <input type="radio" name="lvl" id="lvlP" value="pro"><label for="lvlP">PRO</label>
+        </div>
+      </div>
+    </div>
+    <button class="btn" id="startBtn" disabled>Waxing the ball…</button>
+    <p class="fine" id="rec">Win by two. The team that wins the rally serves next.</p>
+  </div>
+</section>
+
+<section class="screen" id="pause" hidden>
+  <div class="card panel"><div class="eyebrow">TIME OUT</div><h2>Grab some shade.</h2><button class="btn" id="resumeBtn">Back on the sand</button></div>
+</section>
+
+<section class="screen" id="over" hidden>
+  <div class="card panel">
+    <div class="eyebrow" id="overEyebrow">FINAL</div>
+    <h2 id="overTitle">Sand Sharks win!</h2>
+    <div class="big" id="overScore">11<span> – </span>7</div>
+    <dl class="keys">
+      <dt>KILLS</dt><dd id="stK">0</dd>
+      <dt>BLOCKS</dt><dd id="stB">0</dd>
+      <dt>ACES</dt><dd id="stA">0</dd>
+      <dt>DIGS</dt><dd id="stD">0</dd>
+      <dt>RECORD</dt><dd id="stR">0–0</dd>
+    </dl>
+    <button class="btn" id="againBtn">Rematch</button>
+  </div>
+</section>
+
+<div id="touch" hidden>
+  <div id="stick"><div id="nub"></div></div>
+  <button class="tb" id="tJump" type="button">JUMP</button>
+  <button class="tb" id="tHit" type="button">HIT</button>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const $ = (id) => document.getElementById(id);
+const V3 = THREE.Vector3, TAU = Math.PI * 2, PI = Math.PI;
+const isTouch = matchMedia('(pointer: coarse)').matches;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const R = (a, b) => a + Math.random() * (b - a);
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+// ------------------------------------------------------------------ constants
+const G = 13.5, BALL_R = .2, NET_H = 2.43, CX = 8, CZ = 4, POST_Z = 4.9;
+const P_G = 26, JUMP_V = 7.9, REACH = 2.42, RUN = 7.4, APEX = JUMP_V / P_G;
+const LEVELS = {
+  rookie: { dig: .78, react: .26, spikeSpeed: 12.5, err: 1.1, miss: .12, block: .35, speed: 5.2, leave: .6, serveErr: .1 },
+  pro: { dig: .92, react: .14, spikeSpeed: 15.5, err: .6, miss: .06, block: .7, speed: 6, leave: .85, serveErr: .05 },
+};
+let L = LEVELS.rookie;
+
+// ------------------------------------------------------------------ renderer & scene
+const canvas = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xf2b184, 60, 190);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, .1, 1000);
+function fitCamera(){
+  const a = innerWidth / innerHeight;
+  camera.aspect = a;
+  camera.position.set(-2, 5.8, 16.5);
+  const needH = 2 * Math.atan(10.5 / (15 * a)) * 180 / PI;
+  camera.fov = clamp(needH, 40, 70);
+  camera.lookAt(-.2, 1.9, -3);
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+}
+fitCamera(); addEventListener('resize', fitCamera);
+
+scene.add(new THREE.HemisphereLight(0xffd2b0, 0xc79a62, 1.6));
+const sun = new THREE.DirectionalLight(0xffd6a6, 2.6);
+sun.position.set(5, 11, -19); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 16, bottom: -16, near: 1, far: 70 });
+sun.shadow.bias = -.0005; scene.add(sun);
+
+function canvasTex(w, h, draw, repeat){
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  if (repeat){ t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat, repeat); }
+  t.anisotropy = 4; return t;
+}
+
+// sky
+const sky = new THREE.Mesh(new THREE.SphereGeometry(600, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  vertexShader: `varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader: `varying vec3 vP;void main(){vec3 d=normalize(vP);float h=d.y;
+    vec3 c=mix(vec3(1.,.72,.45),vec3(.98,.5,.55),smoothstep(0.,.12,h));c=mix(c,vec3(.45,.36,.62),smoothstep(.12,.35,h));c=mix(c,vec3(.15,.2,.42),smoothstep(.35,.8,h));
+    float s=max(dot(d,normalize(vec3(.12,.045,-1.))),0.);c+=vec3(1.,.85,.6)*smoothstep(.9994,.9997,s)*2.2+vec3(1.,.6,.35)*(pow(s,60.)*.8+pow(s,8.)*.25);
+    gl_FragColor=vec4(c,1.);}`
+}));
+scene.add(sky);
+
+// sand
+const sandTex = canvasTex(256, 256, (g) => {
+  g.fillStyle = '#e9c98f'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 9000; i++){ const v = 180 + Math.random() * 60; g.fillStyle = `rgba(${v},${v * .82},${v * .55},.35)`; g.fillRect(Math.random() * 256, Math.random() * 256, 1.5, 1.5); }
+  g.strokeStyle = 'rgba(160,120,70,.12)'; g.lineWidth = 3;
+  for (let y = 0; y < 256; y += 18){ g.beginPath(); for (let x = 0; x <= 256; x += 8) g.lineTo(x, y + Math.sin(x * .05 + y) * 4); g.stroke(); }
+}, 24);
+const sand = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), new THREE.MeshLambertMaterial({ map: sandTex }));
+sand.rotation.x = -PI / 2; sand.receiveShadow = true; scene.add(sand);
+
+// ocean in the distance
+const ocean = new THREE.Mesh(new THREE.PlaneGeometry(1200, 500), new THREE.ShaderMaterial({
+  fog: false, uniforms: { t: { value: 0 } },
+  vertexShader: `varying vec3 vW;void main(){vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
+  fragmentShader: `uniform float t;varying vec3 vW;void main(){float d=clamp((-vW.z-40.)/260.,0.,1.);
+    vec3 c=mix(vec3(.12,.5,.6),vec3(.55,.42,.6),d);
+    float g=pow(max(0.,sin(vW.x*.12+t*1.5)*sin(vW.z*.3-t)),6.);float glint=smoothstep(26.,0.,abs(vW.x+2.-(-vW.z)*.12))*1.2;
+    c+=vec3(1.,.8,.55)*g*glint;float foam=smoothstep(2.,0.,abs(-vW.z-44.+sin(vW.x*.15+t)*1.5));c=mix(c,vec3(1.,.97,.9),foam*.8);
+    gl_FragColor=vec4(c,1.);}`
+}));
+ocean.rotation.x = -PI / 2; ocean.position.set(0, .03, -290); scene.add(ocean);
+
+// court lines & net
+const lineMat = new THREE.MeshLambertMaterial({ color: 0x1f6fd0 });
+function strap(w, d, x, z){ const m = new THREE.Mesh(new THREE.BoxGeometry(w, .03, d), lineMat); m.position.set(x, .015, z); m.receiveShadow = true; scene.add(m); }
+strap(CX * 2 + .1, .1, 0, CZ); strap(CX * 2 + .1, .1, 0, -CZ); strap(.1, CZ * 2, CX, 0); strap(.1, CZ * 2, -CX, 0);
+const postMat = new THREE.MeshLambertMaterial({ color: 0xd8d8d8 });
+for (const s of [-1, 1]){
+  const p = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, 2.8, 10), postMat); p.position.set(0, 1.4, s * POST_Z); p.castShadow = true; scene.add(p);
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(.14, .14, 1.4, 10), new THREE.MeshLambertMaterial({ color: 0xe0368b })); pad.position.set(0, .7, s * POST_Z); scene.add(pad);
+  const ant = new THREE.Mesh(new THREE.CylinderGeometry(.018, .018, 1.8, 6), new THREE.MeshLambertMaterial({ color: 0xffffff })); ant.position.set(0, NET_H + .1, s * CZ); scene.add(ant);
+  for (let k = 0; k < 9; k++){ const b = new THREE.Mesh(new THREE.CylinderGeometry(.021, .021, .1, 6), new THREE.MeshLambertMaterial({ color: 0xd62a2a })); b.position.set(0, NET_H - .7 + k * .2, s * CZ); scene.add(b); }
+}
+const netTex = canvasTex(256, 32, (g) => {
+  g.clearRect(0, 0, 256, 32); g.strokeStyle = 'rgba(20,20,30,.9)'; g.lineWidth = 1.2;
+  for (let x = 0; x <= 256; x += 4){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 32); g.stroke(); }
+  for (let y = 0; y <= 32; y += 4){ g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); }
+});
+netTex.wrapS = THREE.RepeatWrapping; netTex.repeat.set(4, 1);
+const net = new THREE.Mesh(new THREE.PlaneGeometry(POST_Z * 2, 1), new THREE.MeshBasicMaterial({ map: netTex, transparent: true, side: THREE.DoubleSide, alphaTest: .2 }));
+net.rotation.y = PI / 2; net.position.set(0, NET_H - .5, 0); scene.add(net);
+const tape = new THREE.Mesh(new THREE.BoxGeometry(.03, .07, POST_Z * 2), new THREE.MeshLambertMaterial({ color: 0xffffff })); tape.position.set(0, NET_H - .035, 0); tape.castShadow = true; scene.add(tape);
+
+// scenery: palms, bleachers with a crowd, lifeguard tower, umbrellas
+const trunkM = new THREE.MeshLambertMaterial({ color: 0x8b6a45 }), frondM = new THREE.MeshLambertMaterial({ color: 0x2f8a55, side: THREE.DoubleSide });
+function palm(x, z, h){
+  const g = new THREE.Group(); let px = 0, py = 0; const lean = R(-.15, .15);
+  for (let i = 0; i < 7; i++){ const s = new THREE.Mesh(new THREE.CylinderGeometry(.18, .24, h / 7, 7), trunkM); px += lean * h / 7; py += h / 7; s.position.set(px, py - h / 14, 0); s.rotation.z = -lean; s.castShadow = true; g.add(s); }
+  for (let i = 0; i < 8; i++){ const f = new THREE.Mesh(new THREE.PlaneGeometry(3.4, .7), frondM); f.geometry.translate(1.7, 0, 0); f.position.set(px, py, 0); f.rotation.set(R(-.2, .2), i * TAU / 8, -.5); f.castShadow = true; g.add(f); }
+  g.position.set(x, 0, z); scene.add(g);
+}
+[[-15, -9, 9], [-19, -4, 11], [-13.5, 6, 8], [16, -10, 10], [20, -3, 12], [14.5, 7, 8.5], [-24, -14, 12], [25, -15, 11], [-8, -22, 13], [16, -26, 12]].forEach(([x, z, h]) => palm(x, z, h));
+{
+  const benchM = new THREE.MeshLambertMaterial({ color: 0x9aa4b4 });
+  for (let r = 0; r < 4; r++){ const b = new THREE.Mesh(new THREE.BoxGeometry(18, .35, 1), benchM); b.position.set(0, .3 + r * .55, -8.2 - r * 1); b.castShadow = true; b.receiveShadow = true; scene.add(b); }
+}
+const crowdN = 64, crowdBody = new THREE.InstancedMesh(new THREE.BoxGeometry(.5, .7, .35), new THREE.MeshLambertMaterial({ color: 0xffffff }), crowdN);
+const crowdHead = new THREE.InstancedMesh(new THREE.SphereGeometry(.17, 8, 6), new THREE.MeshLambertMaterial({ color: 0xffffff }), crowdN);
+const crowd = [];
+{
+  const shirts = [0xe0368b, 0x1fb5b0, 0xffe14a, 0xff7a45, 0xffffff, 0x3a5bd6, 0x7ad34a], skins = [0xf1c9a5, 0xd0a080, 0x9a6a45, 0x6a4530];
+  let k = 0;
+  for (let r = 0; r < 4 && k < crowdN; r++) for (let i = 0; i < 16 && k < crowdN; i++, k++){
+    crowd.push({ x: -8.2 + i * 1.1 + R(-.2, .2), y: .85 + r * .55, z: -8.2 - r * 1, ph: R(0, TAU), jump: 0 });
+    crowdBody.setColorAt(k, new THREE.Color(pick(shirts))); crowdHead.setColorAt(k, new THREE.Color(pick(skins)));
+  }
+  crowdBody.castShadow = true; scene.add(crowdBody, crowdHead);
+}
+const dummy = new THREE.Object3D();
+function updateCrowd(dt){
+  crowd.forEach((c, i) => {
+    c.jump = Math.max(0, c.jump - dt);
+    const hop = c.jump > 0 ? Math.abs(Math.sin(S.t * 10 + c.ph)) * .35 : Math.sin(S.t * 2 + c.ph) * .03;
+    dummy.position.set(c.x, c.y + .35 + hop, c.z); dummy.rotation.set(0, 0, 0); dummy.updateMatrix(); crowdBody.setMatrixAt(i, dummy.matrix);
+    dummy.position.y += .52; dummy.updateMatrix(); crowdHead.setMatrixAt(i, dummy.matrix);
+  });
+  crowdBody.instanceMatrix.needsUpdate = crowdHead.instanceMatrix.needsUpdate = true;
+}
+function cheer(){ for (const c of crowd) if (Math.random() < .8) c.jump = R(1, 2.2); }
+{
+  const tower = new THREE.Group(), wood = new THREE.MeshLambertMaterial({ color: 0xf2efe6 }), red = new THREE.MeshLambertMaterial({ color: 0xd62a2a });
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]){ const l = new THREE.Mesh(new THREE.BoxGeometry(.18, 2.6, .18), wood); l.position.set(x, 1.3, z); tower.add(l); }
+  const hut = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.8, 2.6), wood); hut.position.y = 3.4; tower.add(hut);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(3.2, .2, 3), red); roof.position.y = 4.4; tower.add(roof);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.82, .3, 2.62), new THREE.MeshLambertMaterial({ color: 0x1fb5b0 })); stripe.position.y = 3.6; tower.add(stripe);
+  tower.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  tower.position.set(17, 0, -13); tower.rotation.y = -.4; scene.add(tower);
+  const umbColors = [0xe0368b, 0xffe14a, 0x1fb5b0, 0xff7a45];
+  [[-12.5, 3.5], [12.5, 4.5], [-11, -6.5], [23, 4]].forEach(([x, z], i) => {
+    const u = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(.04, .04, 2.6, 6), postMat); pole.position.y = 1.3; u.add(pole);
+    const top = new THREE.Mesh(new THREE.ConeGeometry(1.5, .6, 10, 1, true), new THREE.MeshLambertMaterial({ color: umbColors[i], side: THREE.DoubleSide })); top.position.y = 2.6; top.castShadow = true; u.add(top);
+    u.position.set(x, 0, z); u.rotation.z = R(-.12, .12); scene.add(u);
+    const towel = new THREE.Mesh(new THREE.PlaneGeometry(1, 2), new THREE.MeshLambertMaterial({ color: umbColors[(i + 1) % 4] })); towel.rotation.x = -PI / 2; towel.rotation.z = R(-.5, .5); towel.position.set(x + .6, .02, z + .8); towel.receiveShadow = true; scene.add(towel);
+  });
+  const board = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), new THREE.MeshLambertMaterial({ color: 0xff7a45 })); board.scale.set(.3, 1.2, .06); board.position.set(10.8, .9, 6.2); board.rotation.set(-.2, .3, .3); board.castShadow = true; scene.add(board);
+}
+
+// ------------------------------------------------------------------ players
+function makePlayer(o){
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const skin = new THREE.MeshLambertMaterial({ color: o.skin }), top = new THREE.MeshLambertMaterial({ color: o.top }), shorts = new THREE.MeshLambertMaterial({ color: o.shorts });
+  const legs = [], arms = [];
+  for (const s of [-1, 1]){
+    const p = new THREE.Group(); p.position.set(0, .95, .12 * s); body.add(p);
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(.17, .42, .17), shorts); thigh.position.y = -.2; p.add(thigh);
+    const shin = new THREE.Mesh(new THREE.BoxGeometry(.14, .55, .14), skin); shin.position.y = -.66; p.add(shin);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(.24, .07, .12), skin); foot.position.set(.05, -.93, 0); p.add(foot);
+    legs.push(p);
+  }
+  const hips = new THREE.Mesh(new THREE.BoxGeometry(.3, .22, .42), shorts); hips.position.y = 1.0; body.add(hips);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(.28, .6, .44), top); torso.position.y = 1.4; body.add(torso);
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(.1, .1, .1), skin); neck.position.y = 1.74; body.add(neck);
+  const head = new THREE.Group(); head.position.y = 1.9; body.add(head);
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(.15, 12, 10), skin));
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(.158, 12, 8, 0, TAU, 0, PI * .5), new THREE.MeshLambertMaterial({ color: o.hair })); hair.rotation.z = .25; head.add(hair);
+  if (o.visor){ const v = new THREE.Mesh(new THREE.BoxGeometry(.22, .03, .3), new THREE.MeshLambertMaterial({ color: o.visor })); v.position.set(.14, .06, 0); head.add(v);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(.152, .025, 6, 16), new THREE.MeshLambertMaterial({ color: o.visor })); band.rotation.x = PI / 2; band.position.y = .05; head.add(band); }
+  const shades = new THREE.Mesh(new THREE.BoxGeometry(.04, .045, .22), new THREE.MeshBasicMaterial({ color: 0x111111 })); shades.position.set(.14, .01, 0); if (o.shades) head.add(shades);
+  for (const s of [-1, 1]){
+    const p = new THREE.Group(); p.position.set(0, 1.64, .27 * s); body.add(p);
+    const a = new THREE.Mesh(new THREE.BoxGeometry(.1, .66, .1), skin); a.position.y = -.33; p.add(a);
+    arms.push(p);
+  }
+  root.traverse((m) => { if (m.isMesh) m.castShadow = true; });
+  scene.add(root);
+  return { root, body, legs, arms, head };
+}
+const TEAMS = [
+  { id: 0, name: 'SAND SHARKS', sign: -1, score: 0, players: [], phase: 'base', serverIdx: 0 },
+  { id: 1, name: 'SURF KINGS', sign: 1, score: 0, players: [], phase: 'base', serverIdx: 0 },
+];
+const PLAYER_DEFS = [
+  { team: 0, name: 'YOU', human: true, skin: 0xd9a070, top: 0xfffaf0, shorts: 0xff7a45, hair: 0xe8c060, visor: 0xff7a45, shades: true },
+  { team: 0, name: 'RICO', skin: 0x8a5a38, top: 0xfffaf0, shorts: 0xff7a45, hair: 0x1a1210, visor: null, shades: false },
+  { team: 1, name: 'BLAZE', skin: 0xe8b890, top: 0x1b2a4a, shorts: 0x1fb5b0, hair: 0xb04a20, visor: 0x1fb5b0, shades: true },
+  { team: 1, name: 'TANK', skin: 0xc08a60, top: 0x1b2a4a, shorts: 0x1fb5b0, hair: 0x2a1a10, visor: null, shades: false },
+];
+const players = PLAYER_DEFS.map((d, i) => {
+  const p = { ...d, i, parts: makePlayer(d), pos: new V3(), vel: new V3(), y: 0, vy: 0, air: false, act: 'idle', actT: 0, phase: R(0, 9), target: null, face: 0, diveDir: new V3(), jumpAt: 0 };
+  TEAMS[d.team].players.push(p); return p;
+});
+const human = players[0];
+const youMark = new THREE.Mesh(new THREE.ConeGeometry(.16, .3, 4), new THREE.MeshBasicMaterial({ color: 0xff7a45 })); youMark.rotation.x = PI; scene.add(youMark);
+const ringTex = canvasTex(128, 128, (g) => { g.strokeStyle = '#fff'; g.lineWidth = 10; g.beginPath(); g.arc(64, 64, 52, 0, TAU); g.stroke(); });
+function ring(color, size){ const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: ringTex, color, transparent: true, depthWrite: false })); m.rotation.x = -PI / 2; m.position.y = .04; m.visible = false; scene.add(m); return m; }
+const youRing = ring(0xff7a45, 1.1); youRing.visible = true;
+const landRing = ring(0xffffff, 1.4), setRing = ring(0xffe14a, 1.6), spikeRing = ring(0xe0368b, 1.6);
+
+// ------------------------------------------------------------------ ball
+const ballTex = canvasTex(256, 128, (g) => {
+  const cols = ['#ffe14a', '#1f6fd0', '#fffaf0', '#ffe14a', '#1f6fd0', '#fffaf0'];
+  for (let i = 0; i < 6; i++){ g.fillStyle = cols[i]; g.beginPath(); g.moveTo(i * 43, 0); g.bezierCurveTo(i * 43 + 60, 40, i * 43 - 20, 90, i * 43 + 40, 128); g.lineTo(i * 43 + 83, 128); g.bezierCurveTo(i * 43 + 23, 90, i * 43 + 103, 40, i * 43 + 43, 0); g.fill(); }
+  g.fillStyle = '#fffaf0'; g.fillRect(0, 0, 256, 6); g.fillRect(0, 122, 256, 6);
+});
+const ball = { mesh: new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 20, 14), new THREE.MeshLambertMaterial({ map: ballTex })), pos: new V3(), vel: new V3(), state: 'held', lastTeam: -1, lastPlayer: null, touches: 0, kind: '', prevX: 0, serveAce: false };
+ball.mesh.castShadow = true; scene.add(ball.mesh);
+const shadow = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * 1.2, 16), new THREE.MeshBasicMaterial({ color: 0x3a2a10, transparent: true, opacity: .45, depthWrite: false }));
+shadow.rotation.x = -PI / 2; shadow.position.y = .03; scene.add(shadow);
+
+// sand puffs
+const PM = 400, pp = new Float32Array(PM * 3), pv = new Float32Array(PM * 3), pl = new Float32Array(PM), ps = new Float32Array(PM);
+const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(pp, 3)); pGeo.setAttribute('aS', new THREE.BufferAttribute(ps, 1));
+const puffs = new THREE.Points(pGeo, new THREE.ShaderMaterial({ transparent: true, depthWrite: false,
+  vertexShader: `attribute float aS;varying float vA;void main(){vA=aS;vec4 mv=modelViewMatrix*vec4(position,1.);gl_PointSize=aS*260./-mv.z;gl_Position=projectionMatrix*mv;}`,
+  fragmentShader: `varying float vA;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;gl_FragColor=vec4(.93,.82,.6,smoothstep(.5,.1,d)*.8);}` }));
+puffs.frustumCulled = false; scene.add(puffs);
+let ph = 0;
+function puff(x, z, n = 14, power = 2){ for (let k = 0; k < n; k++){ const i = ph; ph = (ph + 1) % PM; pp.set([x + R(-.2, .2), .05, z + R(-.2, .2)], i * 3); pv.set([R(-1, 1) * power, R(1, 2.5) * power * .7, R(-1, 1) * power], i * 3); pl[i] = R(.4, .8); } }
+function updatePuffs(dt){
+  for (let i = 0; i < PM; i++){
+    if (pl[i] <= 0){ ps[i] = 0; continue; }
+    pl[i] -= dt; pv[i * 3 + 1] -= 9 * dt; for (let k = 0; k < 3; k++) pp[i * 3 + k] += pv[i * 3 + k] * dt; if (pp[i * 3 + 1] < 0) pp[i * 3 + 1] = 0;
+    ps[i] = clamp(pl[i], 0, .5) * .5;
+  }
+  pGeo.attributes.position.needsUpdate = pGeo.attributes.aS.needsUpdate = true;
+}
+
+// ------------------------------------------------------------------ audio
+let AC = null, master, sfxBus, musicBus, noiseBuf, nextNote = 0, step = 0;
+const SPB = 60 / 126 / 4, mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+const PROG = [45, 41, 43, 40];
+const LEAD = [69, null, 72, 74, null, 72, 69, null, 67, null, 69, 72, null, null, 76, null];
+function audioInit(){
+  if (AC) return;
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e){ return; }
+  master = AC.createGain(); master.gain.value = S.muted ? 0 : .8; master.connect(AC.destination);
+  sfxBus = AC.createGain(); sfxBus.gain.value = .8; sfxBus.connect(master);
+  musicBus = AC.createGain(); musicBus.gain.value = .13; musicBus.connect(master);
+  noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const surf = AC.createBufferSource(); surf.buffer = noiseBuf; surf.loop = true; const sf = AC.createBiquadFilter(); sf.type = 'lowpass'; sf.frequency.value = 450;
+  const sg = AC.createGain(); sg.gain.value = .05; surf.connect(sf); sf.connect(sg); sg.connect(master); surf.start();
+  const lfo = AC.createOscillator(); lfo.frequency.value = .12; const lg = AC.createGain(); lg.gain.value = .035; lfo.connect(lg); lg.connect(sg.gain); lfo.start();
+  nextNote = AC.currentTime + .1; setInterval(scheduler, 50);
+}
+function envGain(t, a, d, peak, dest){ const g = AC.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(.0001, t + a + d); g.connect(dest); return g; }
+function osc(type, f0, f1, t, dur, peak, dest = sfxBus){ const o = AC.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur); o.connect(envGain(t, .004, dur, peak, dest)); o.start(t); o.stop(t + dur + .05); }
+function noise(t, dur, peak, type, freq, dest = sfxBus, q = 1){ const s = AC.createBufferSource(); s.buffer = noiseBuf; const f = AC.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; s.connect(f); f.connect(envGain(t, .003, dur, peak, dest)); s.start(t, Math.random() * .5); s.stop(t + dur + .05); }
+function sfx(n){
+  if (!AC) return; const t = AC.currentTime;
+  if (n === 'bump'){ osc('sine', 190, 90, t, .12, .6); noise(t, .06, .3, 'lowpass', 1200); }
+  if (n === 'set'){ osc('sine', 260, 150, t, .08, .45); noise(t, .04, .25, 'bandpass', 1800); }
+  if (n === 'spike'){ noise(t, .09, .9, 'highpass', 1500); osc('sine', 150, 50, t, .16, .8); }
+  if (n === 'serve'){ noise(t, .06, .6, 'bandpass', 1400); osc('sine', 220, 110, t, .1, .5); }
+  if (n === 'net'){ noise(t, .3, .5, 'bandpass', 500, sfxBus, 3); }
+  if (n === 'block'){ osc('square', 120, 60, t, .12, .35); noise(t, .08, .6, 'lowpass', 900); }
+  if (n === 'sand'){ noise(t, .25, .45, 'lowpass', 700); }
+  if (n === 'jump'){ noise(t, .1, .15, 'lowpass', 500); }
+  if (n === 'whistle'){ const o = AC.createOscillator(); o.type = 'sine'; o.frequency.value = 2900; const l = AC.createOscillator(); l.frequency.value = 28; const lg = AC.createGain(); lg.gain.value = 180; l.connect(lg); lg.connect(o.frequency); o.connect(envGain(t, .01, .45, .25, sfxBus)); o.start(t); l.start(t); o.stop(t + .5); l.stop(t + .5); }
+  if (n === 'cheer'){ noise(t, 1.6, .35, 'bandpass', 1300, sfxBus, .6); noise(t + .1, 1.4, .2, 'bandpass', 2600, sfxBus, .8); }
+  if (n === 'aww'){ osc('sawtooth', 300, 200, t, .8, .06); noise(t, .9, .15, 'bandpass', 700, sfxBus, .7); }
+}
+function scheduler(){
+  if (!AC || AC.state !== 'running') return;
+  while (nextNote < AC.currentTime + .12){
+    const s = step % 16, bar = Math.floor(step / 16) % 4, root = PROG[bar], t = nextNote;
+    if (s % 2 === 0){ const o = AC.createOscillator(); o.type = 'square'; o.frequency.value = mtof(root - 12 + (s % 4 === 2 ? 12 : 0)); const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600; o.connect(f); f.connect(envGain(t, .005, .14, .45, musicBus)); o.start(t); o.stop(t + .18); }
+    if (s % 4 === 0) osc('sine', 140, 45, t, .16, .9, musicBus);
+    if (s === 4 || s === 12) noise(t, .12, .5, 'bandpass', 2000, musicBus, .8);
+    noise(t, .025, s % 2 ? .12 : .06, 'highpass', 8000, musicBus);
+    if (step % 64 >= 32 && LEAD[s] !== null){ const shift = [0, -4, -2, -5][bar]; osc('square', mtof(LEAD[s] + shift), 0, t, .16, .1, musicBus); }
+    nextNote += SPB; step++;
+  }
+}
+
+// ------------------------------------------------------------------ state
+const S = { demo: true, state: 'title', t: 0, target: 11, servingTeam: 0, server: null, serveT: 0, pointT: 0, muted: false, stats: { k: 0, b: 0, a: 0, d: 0 }, lastAttack: null, rally: 0, nextServeReady: false };
+
+// ------------------------------------------------------------------ input
+const keys = {};
+let hitQ = false, jumpQ = false, hitBuf = 0, jumpBuf = 0;
+addEventListener('keydown', (e) => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  keys[e.code] = true; if (e.repeat) return;
+  if (e.code === 'Enter' && (S.demo || S.state === 'over') && !$('startBtn').disabled){ begin(); return; }
+  if (e.code === 'KeyJ' || e.code === 'KeyZ'){ hitQ = true; hitBuf = .22; }
+  if (e.code === 'KeyK' || e.code === 'KeyX' || e.code === 'Space'){ jumpQ = true; jumpBuf = .16; }
+  if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
+  if (e.code === 'KeyM'){ S.muted = !S.muted; if (master) master.gain.value = S.muted ? 0 : .8; }
+});
+addEventListener('keyup', (e) => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (!S.demo && S.state !== 'over' && S.state !== 'paused') togglePause(); });
+const joy = { x: 0, y: 0, id: null, cx: 0, cy: 0 };
+const stick = $('stick'), nub = $('nub');
+function moveJoy(e){ let dx = e.clientX - joy.cx, dy = e.clientY - joy.cy; const m = Math.hypot(dx, dy); if (m > 46){ dx *= 46 / m; dy *= 46 / m; } joy.x = dx / 46; joy.y = dy / 46; nub.style.transform = `translate(${dx}px,${dy}px)`; }
+stick.addEventListener('pointerdown', (e) => { joy.id = e.pointerId; const r = stick.getBoundingClientRect(); joy.cx = r.left + r.width / 2; joy.cy = r.top + r.height / 2; stick.setPointerCapture(e.pointerId); moveJoy(e); });
+stick.addEventListener('pointermove', (e) => { if (e.pointerId === joy.id) moveJoy(e); });
+const endJoy = (e) => { if (e.pointerId !== joy.id) return; joy.id = null; joy.x = joy.y = 0; nub.style.transform = ''; };
+stick.addEventListener('pointerup', endJoy); stick.addEventListener('pointercancel', endJoy);
+$('tHit').addEventListener('pointerdown', (e) => { e.preventDefault(); hitQ = true; hitBuf = .22; });
+$('tJump').addEventListener('pointerdown', (e) => { e.preventDefault(); jumpQ = true; jumpBuf = .16; });
+// screen right = +x, screen up = -z (camera sits on the +z sideline)
+function inputDir(){
+  const x = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0) + joy.x;
+  const z = (keys.ArrowDown || keys.KeyS ? 1 : 0) - (keys.ArrowUp || keys.KeyW ? 1 : 0) + joy.y;
+  const m = Math.hypot(x, z); return m > 1 ? { x: x / m, z: z / m } : { x, z };
+}
+
+// ------------------------------------------------------------------ ball physics helpers
+function timeToHeight(h){
+  const a = .5 * G, b = -ball.vel.y, c = h - ball.pos.y, disc = b * b - 4 * a * c;
+  if (disc < 0) return -1; return (-b + Math.sqrt(disc)) / (2 * a);
+}
+function posAt(t){ return new V3(ball.pos.x + ball.vel.x * t, ball.pos.y + ball.vel.y * t - .5 * G * t * t, ball.pos.z + ball.vel.z * t); }
+function launch(to, T){ ball.vel.set((to.x - ball.pos.x) / T, (to.y - ball.pos.y) / T + .5 * G * T, (to.z - ball.pos.z) / T); ball.state = 'flight'; ball.prevX = ball.pos.x; }
+const handPos = (p) => new V3(p.pos.x + Math.cos(p.face) * .25, p.y + REACH, p.pos.z - Math.sin(p.face) * .25);
+const otherTeam = (t) => TEAMS[1 - t.id];
+const teamOfSide = (x) => (x < 0 ? TEAMS[0] : TEAMS[1]);
+
+// ------------------------------------------------------------------ banners & HUD
+let bannerT = 0;
+function banner(text, sub = '', dur = 1.4){ if (S.demo) return; const b = $('banner'); b.innerHTML = text + (sub ? `<small>${sub}</small>` : ''); b.hidden = false; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); bannerT = dur; }
+function hint(html){ const h = $('hint'); h.hidden = html === '&nbsp;'; if (h.innerHTML !== html) h.innerHTML = html; }
+function updateScore(){
+  $('s0').textContent = TEAMS[0].score; $('s1').textContent = TEAMS[1].score;
+  $('sv0').classList.toggle('on', S.servingTeam === 0); $('sv1').classList.toggle('on', S.servingTeam === 1);
+}
+
+// ------------------------------------------------------------------ rally flow
+function basePos(team, i){ return new V3(team.sign * (i ? 5.2 : 3.2), 0, i ? 1.8 : -1.8); }
+function setupServe(){
+  S.state = 'serve'; S.serveT = 0; S.rally = 0;
+  const st = TEAMS[S.servingTeam], rt = otherTeam(st);
+  S.server = st.players[st.serverIdx];
+  for (const t of TEAMS){ t.phase = 'base'; }
+  st.players.forEach((p, i) => { const q = p === S.server ? new V3(st.sign * 9.2, 0, p === human ? clamp(human.pos.z || 0, -3.5, 3.5) : R(-2.5, 2.5)) : new V3(st.sign * 2.4, 0, -S.server.pos.z || 1.5); placePlayer(p, q); });
+  rt.players.forEach((p, i) => placePlayer(p, new V3(rt.sign * 5.6, 0, i ? 2 : -2)));
+  ball.state = 'held'; ball.lastTeam = -1; ball.touches = 0; ball.serveAce = true;
+  S.serveKind = null;
+  landRing.visible = setRing.visible = spikeRing.visible = false;
+}
+function placePlayer(p, q){ p.pos.copy(q); p.vel.set(0, 0, 0); p.y = 0; p.vy = 0; p.air = false; p.act = 'idle'; p.actT = 0; p.target = null; p.face = TEAMS[p.team].sign < 0 ? 0 : PI; }
+function doServe(kind, aim){
+  const st = TEAMS[S.servingTeam], rt = otherTeam(st), p = S.server;
+  S.serveKind = kind; p.act = 'serve'; p.actT = 0; S.serveT = 0;
+  ball.state = 'toss'; ball.pos.set(p.pos.x - st.sign * .3, 1.9, p.pos.z); ball.vel.set(0, kind === 'jump' ? 8.5 : 6.2, 0);
+  if (kind === 'jump'){ p.vy = JUMP_V * 1.05; p.air = true; p.vel.x = -st.sign * 2.5; sfx('jump'); }
+  S.serveAim = aim;
+}
+function strikeServe(){
+  const st = TEAMS[S.servingTeam], rt = otherTeam(st), p = S.server, jump = S.serveKind === 'jump';
+  let tx = rt.sign * R(3.5, 6.8), tz = R(-3.3, 3.3);
+  if (S.serveAim){ tx = rt.sign * (5 + S.serveAim.x * rt.sign * 2); tz = S.serveAim.z * 3.3 + R(-.4, .4); if (!S.serveAim.x && !S.serveAim.z){ tx = rt.sign * R(4, 6.5); tz = R(-2.5, 2.5); } }
+  if (!p.human && Math.random() < L.serveErr * (jump ? 1.8 : 1)){ if (Math.random() < .5){ tx = rt.sign * R(8.6, 9.5); } else { tx = rt.sign * .6; } }
+  const T = jump ? R(.8, .95) : R(1.25, 1.45);
+  launch(new V3(tx, BALL_R, tz), T);
+  // keep a net-crossing check: floaters that would dip under the tape get lifted
+  const tn = (0 - ball.pos.x) / ball.vel.x, yn = ball.pos.y + ball.vel.y * tn - .5 * G * tn * tn;
+  if (yn < NET_H + .35 && !(tx === rt.sign * .6)) launch(new V3(tx, BALL_R, tz), T + .25);
+  ball.lastTeam = st.id; ball.lastPlayer = p; ball.touches = 0; ball.kind = 'serve'; ball.serveAce = true;
+  sfx('serve'); p.act = 'spike'; p.actT = 0;
+  S.state = 'rally';
+  planReceive(rt);
+}
+function planReceive(team){
+  const t = timeToHeight(.95); if (t < 0) return;
+  const Lp = posAt(t); team.L = Lp; team.Lt = S.t + t; team.phase = 'receive'; team.react = S.t + (team.id === 1 ? L.react : .12);
+  const out = Math.abs(Lp.x) > CX + .3 || Math.abs(Lp.z) > CZ + .3 || Math.sign(Lp.x) !== team.sign;
+  team.leave = out && Math.random() < (team.id === 1 ? L.leave : .85);
+  const c = team.players.slice().sort((a, b) => a.pos.distanceTo(Lp) - b.pos.distanceTo(Lp));
+  team.receiver = c[0]; team.setter = c[1];
+  ball.touches = 0;
+  const o = otherTeam(team); if (o.phase !== 'defend') o.phase = 'base';
+}
+function onDig(team, p, diveQ){
+  const q = diveQ ? .5 : 1;
+  S.rally++; ball.touches = 1; ball.lastTeam = team.id; ball.lastPlayer = p; ball.kind = 'dig'; ball.serveAce = false;
+  const setter = team.players.find((o) => o !== p);
+  let ok = team.id === 1 ? Math.random() < L.dig * (diveQ ? .8 : 1) : Math.random() < (p.human ? .97 : .9) * (diveQ ? .85 : 1);
+  const S0 = new V3(team.sign * 1.8, 2.3, clamp(ball.pos.z * .35, -2, 2));
+  if (!ok){ S0.x += R(-3, 3); S0.z += R(-3.5, 3.5); banner('SHANKED', '', .8); }
+  else { const e = (1 - q) * 1.2 + .25; S0.x += R(-e, e); S0.z += R(-e, e); }
+  launch(S0, R(1.15, 1.3));
+  p.act = 'dig'; p.actT = 0; sfx('bump'); puff(p.pos.x, p.pos.z, 6, 1);
+  if (team.id === 0) S.stats.d++;
+  const landSide = teamOfSide(posAt(timeToHeight(1)).x);
+  if (landSide !== team){ planReceive(landSide); return; }
+  team.phase = 'set'; team.setter = setter; team.attacker = p; team.setPt = S0;
+}
+function onSet(team, p){
+  ball.touches = 2; ball.lastTeam = team.id; ball.lastPlayer = p; ball.kind = 'set';
+  const attacker = team.players.find((o) => o !== p);
+  const A = new V3(team.sign * 1.05, 3.15, clamp(attacker === human ? human.pos.z : attacker.pos.z * .6, -3.2, 3.2));
+  const T = 1.05; launch(A, T);
+  p.act = 'set'; p.actT = 0; sfx('set');
+  team.phase = 'attack'; team.attacker = attacker; team.A = A; team.At = S.t + T;
+  const o = otherTeam(team); o.phase = 'defend'; o.oppA = A; o.oppAt = S.t + T;
+  o.blocker = o.id === 0 ? null : o.players.slice().sort((a, b) => Math.abs(a.pos.x) - Math.abs(b.pos.x))[0];
+  o.defender = o.id === 0 ? o.players[1] : o.players.find((q) => q !== o.blocker);
+  o.blockTry = o.id === 1 && Math.random() < L.block;
+}
+function onSpike(team, p, aim){
+  const o = otherTeam(team);
+  ball.touches = 3; ball.lastTeam = team.id; ball.lastPlayer = p; ball.kind = 'spike';
+  let tx, tz;
+  if (p.human){
+    tx = o.sign * (aim.x ? (aim.x * o.sign > 0 ? 7 : 2.8) : 5.2);
+    tz = aim.z ? aim.z * 3.2 : clamp(-p.pos.z * .7, -3, 3);
+  } else {
+    // aim at the open sand, away from both defenders
+    let best = null, bd = -1;
+    for (const x of [2.8, 4.8, 6.8]) for (const z of [-3, -1, 1, 3]){
+      const c = new V3(o.sign * x, 0, z); const d = Math.min(...o.players.map((q) => Math.hypot(q.pos.x - c.x, q.pos.z - c.z))) + R(0, 1.2);
+      if (d > bd){ bd = d; best = c; }
+    }
+    tx = best.x + R(-L.err, L.err); tz = best.z + R(-L.err, L.err);
+    if (Math.random() < L.miss){ if (Math.random() < .5) tz = Math.sign(tz || 1) * R(4.4, 5.2); else tx = o.sign * R(8.4, 9.4); }
+  }
+  const hand = ball.pos.clone(), dist = Math.hypot(tx - hand.x, tz - hand.z);
+  const speed = p.human ? 15 : (team.id === 0 ? 13.5 : L.spikeSpeed);
+  launch(new V3(tx, BALL_R, tz), dist / speed);
+  p.act = 'spike'; p.actT = 0; sfx('spike'); S.lastAttack = p;
+  planReceive(o);
+  o.phase = 'receive';
+}
+function onFreeBall(team, p){
+  const o = otherTeam(team);
+  ball.touches = 3; ball.lastTeam = team.id; ball.lastPlayer = p; ball.kind = 'free';
+  launch(new V3(o.sign * R(3.5, 6.5), BALL_R, R(-3, 3)), R(1.3, 1.5));
+  p.act = 'dig'; p.actT = 0; sfx('bump');
+  planReceive(o);
+}
+function onBlock(p){
+  const team = TEAMS[p.team], atk = otherTeam(team);
+  ball.vel.x = -ball.vel.x * .35; ball.vel.y = -2.5; ball.vel.z *= .4; ball.pos.x = atk.sign * .25;
+  ball.lastTeam = team.id; ball.lastPlayer = p; ball.kind = 'block';
+  sfx('block'); banner('BLOCK!', p.human ? 'Stuffed at the net' : `${p.name} with the roof`, 1.1);
+  S.blockBy = p;
+  planReceive(atk);
+}
+function netHit(){
+  sfx('net'); ball.vel.x = -ball.vel.x * .2; ball.vel.y = Math.min(ball.vel.y, 0) * .3; ball.vel.z *= .3; ball.pos.x = Math.sign(ball.prevX) * (BALL_R + .02);
+  ball.kind = 'net';
+  const t = teamOfSide(ball.pos.x); if (t.id !== ball.lastTeam || ball.touches < 3) planReceive(t); else t.phase = 'base';
+}
+function rallyOver(winner, text, sub){
+  if (S.state !== 'rally') return;
+  if (S.demo){ S.state = 'point'; S.pointT = 0; S.servingTeam = winner.id; winner.serverIdx = 1 - winner.serverIdx; return; }
+  S.state = 'point'; S.pointT = 0;
+  sfx('whistle');
+  winner.score++;
+  if (winner.id === 0){ cheer(); sfx('cheer'); } else sfx('aww');
+  if (S.servingTeam !== winner.id){ winner.serverIdx = 1 - winner.serverIdx; S.servingTeam = winner.id; sub = sub || 'Side out'; }
+  banner(text, sub, 1.6);
+  for (const p of winner.players) if (p.act !== 'down'){ p.act = 'cheer'; p.actT = 0; }
+  updateScore();
+  landRing.visible = setRing.visible = spikeRing.visible = false;
+}
+function landBall(){
+  const x = ball.pos.x, z = ball.pos.z, inCourt = Math.abs(x) <= CX + BALL_R && Math.abs(z) <= CZ + BALL_R;
+  puff(x, z, 18, 2.2); sfx('sand');
+  ball.state = 'dead'; ball.vel.set(0, 0, 0); ball.pos.y = BALL_R;
+  const side = teamOfSide(x), last = ball.lastTeam >= 0 ? TEAMS[ball.lastTeam] : null;
+  if (inCourt){
+    const winner = otherTeam(side);
+    let text = 'POINT', sub = '';
+    if (ball.kind === 'serve' && ball.serveAce && last && winner === last){ text = 'ACE!'; if (winner.id === 0) S.stats.a++; }
+    else if (ball.kind === 'spike' && last && winner === last){ text = 'KILL!'; if (winner.id === 0) S.stats.k++; sub = S.lastAttack ? `${S.lastAttack.human ? 'Your' : S.lastAttack.name + "'s"} spike` : ''; }
+    else if (ball.kind === 'block' && last && winner === last){ text = 'STUFFED!'; if (winner.id === 0) S.stats.b++; }
+    else if (ball.kind === 'net') text = 'NET!';
+    rallyOver(winner, text, sub);
+  } else {
+    const winner = last ? otherTeam(last) : otherTeam(side);
+    rallyOver(winner, 'OUT!', last ? `${last.name} hit it long` : '');
+  }
+}
+function updateBall(dt){
+  if (ball.state === 'held'){
+    const p = S.server; ball.pos.set(p.pos.x - TEAMS[p.team].sign * .35, 1.05 + p.y, p.pos.z + .25);
+  } else if (ball.state === 'toss'){
+    ball.vel.y -= G * dt; ball.pos.addScaledVector(ball.vel, dt);
+    const p = S.server; ball.pos.x = p.pos.x - TEAMS[p.team].sign * .3; ball.pos.z = p.pos.z;
+    const hitH = S.serveKind === 'jump' ? p.y + 2.7 : 2.6;
+    if (ball.vel.y < 0 && ball.pos.y <= hitH) strikeServe();
+  } else if (ball.state === 'flight'){
+    ball.prevX = ball.pos.x;
+    ball.vel.y -= G * dt; ball.pos.addScaledVector(ball.vel, dt);
+    if (Math.sign(ball.prevX) !== Math.sign(ball.pos.x) && ball.prevX !== 0){
+      // block?
+      const defending = teamOfSide(ball.pos.x);
+      let blocked = false;
+      if (ball.kind === 'spike'){
+        for (const p of defending.players){
+          if (!p.air || Math.abs(p.pos.x) > 1.1) continue;
+          const top = p.y + REACH + .45;
+          if (Math.abs(ball.pos.z - p.pos.z) < .85 && ball.pos.y < top && ball.pos.y > NET_H - .15 && (p.human || S.blockOK)){ onBlock(p); blocked = true; break; }
+        }
+      }
+      if (!blocked && ball.pos.y < NET_H + BALL_R && Math.abs(ball.pos.z) < POST_Z) netHit();
+    }
+    if (ball.pos.y <= BALL_R && ball.state === 'flight') landBall();
+    const sp = ball.vel.length(); ball.mesh.rotation.x += sp * dt * 1.5; ball.mesh.rotation.z += sp * dt;
+  }
+  ball.mesh.position.copy(ball.pos);
+  shadow.position.set(ball.pos.x, .03, ball.pos.z); const k = 1 / (1 + ball.pos.y * .25); shadow.scale.setScalar(k * 1.6); shadow.material.opacity = .45 * k;
+}
+
+// ------------------------------------------------------------------ player movement & AI
+function moveTowards(p, q, speed, dt){
+  const dx = q.x - p.pos.x, dz = q.z - p.pos.z, d = Math.hypot(dx, dz);
+  const want = d > .08 ? Math.min(speed, d * 6) : 0;
+  const k = 1 - Math.exp(-10 * dt);
+  p.vel.x = lerp(p.vel.x, d > .001 ? dx / d * want : 0, k); p.vel.z = lerp(p.vel.z, d > .001 ? dz / d * want : 0, k);
+}
+function clampSide(p){
+  const s = TEAMS[p.team].sign;
+  p.pos.x = s < 0 ? clamp(p.pos.x, -12, -.3) : clamp(p.pos.x, .3, 12); p.pos.z = clamp(p.pos.z, -7, 7);
+}
+function jump(p){ if (p.air || p.act === 'dive' || p.act === 'down') return; p.air = true; p.vy = JUMP_V; sfx('jump'); puff(p.pos.x, p.pos.z, 6, 1); }
+function dive(p, dir){
+  if (p.air || p.act === 'dive' || p.act === 'down') return;
+  p.act = 'dive'; p.actT = 0; p.diveDir.set(dir.x, 0, dir.z).normalize(); p.vel.set(p.diveDir.x * 9, 0, p.diveDir.z * 9);
+}
+function aiUpdate(p, dt){
+  const team = TEAMS[p.team], sp = p.team === 1 ? L.speed : 6;
+  if (p.act === 'dive' || p.act === 'down' || p.act === 'serve') return;
+  let q = null;
+  if (S.state === 'serve'){ q = null; }
+  else if (S.state === 'point'){ q = null; }
+  else if (team.phase === 'receive'){
+    if (p === team.receiver){ if (!team.leave && S.t > team.react) q = team.L; }
+    else q = new V3(team.sign * 2.2, 0, clamp(team.L.z * .4, -2, 2));
+    // dive if it can't be reached on foot
+    if (p === team.receiver && !team.leave && S.t > team.react){
+      const tl = team.Lt - S.t, d = Math.hypot(team.L.x - p.pos.x, team.L.z - p.pos.z);
+      if (tl < .38 && tl > .12 && d > 1.1 && d < 3.3) dive(p, { x: team.L.x - p.pos.x, z: team.L.z - p.pos.z });
+    }
+  } else if (team.phase === 'set'){
+    if (p === team.setter){ const t = timeToHeight(2.2); q = t > 0 ? posAt(t) : team.setPt; }
+    else q = new V3(team.sign * 3.4, 0, clamp(p.pos.z, -3, 3));
+  } else if (team.phase === 'attack'){
+    if (p === team.attacker){
+      const tl = team.At - S.t;
+      const app = new V3(team.A.x + team.sign * 1.9, 0, team.A.z);
+      if (!p.air){
+        if (tl > APEX + .05) q = app;
+        else if (tl > .1){ q = new V3(team.A.x + team.sign * .15, 0, team.A.z); jump(p); p.vel.x = -team.sign * 1.75 / (APEX + .05); }
+      }
+    } else q = new V3(team.sign * 3.5, 0, clamp(-team.A.z * .3, -2, 2));
+  } else if (team.phase === 'defend'){
+    if (p === team.blocker){
+      q = new V3(team.sign * .5, 0, team.oppA.z + R(-.05, .05));
+      const tl = team.oppAt - S.t;
+      if (team.blockTry && !p.air && tl < APEX && tl > .06 && Math.abs(p.pos.x) < 1.2){ jump(p); p.act = 'block'; p.actT = 0; }
+    } else q = new V3(team.sign * 5.4, 0, clamp(-team.oppA.z * .35 + (p === team.defender ? 0 : 1.5), -3, 3));
+  } else {
+    q = basePos(team, team.players.indexOf(p));
+  }
+  if (q && !p.air) moveTowards(p, q, sp, dt);
+  else if (!p.air){ p.vel.x = lerp(p.vel.x, 0, 1 - Math.exp(-10 * dt)); p.vel.z = lerp(p.vel.z, 0, 1 - Math.exp(-10 * dt)); }
+}
+function humanUpdate(dt){
+  const p = human, d = inputDir();
+  hitBuf = Math.max(0, hitBuf - dt); jumpBuf = Math.max(0, jumpBuf - dt);
+  if (p.act !== 'dive' && p.act !== 'down' && p.act !== 'serve' && S.state !== 'point'){
+    if (!p.air){ const k = 1 - Math.exp(-24 * dt); p.vel.x = lerp(p.vel.x, d.x * RUN, k); p.vel.z = lerp(p.vel.z, d.z * RUN, k); }
+    else { const k = 1 - Math.exp(-6 * dt); p.vel.x = lerp(p.vel.x, d.x * RUN * .8, k); p.vel.z = lerp(p.vel.z, d.z * RUN * .8, k); }
+  }
+  if (S.state === 'serve' && S.server === p && ball.state === 'held'){
+    p.pos.x = TEAMS[0].sign * 9.2; p.vel.x = 0; p.pos.z = clamp(p.pos.z, -3.8, 3.8);
+    if (hitQ){ doServe('float', d); hitBuf = 0; } else if (jumpQ){ doServe('jump', d); jumpBuf = 0; }
+  } else if (S.state === 'rally'){
+    const team = TEAMS[0];
+    if (jumpBuf > 0 && !p.air && p.act !== 'dive' && p.act !== 'down'){ jump(p); jumpBuf = 0; }
+    if (hitBuf > 0){
+      const dh = Math.hypot(ball.pos.x - p.pos.x, ball.pos.z - p.pos.z);
+      if (p.air){ // spike: the press stays live for a moment so an early tap still connects
+        if (p.act !== 'spike'){ p.act = 'spike'; p.actT = 0; }
+        if (team.phase === 'attack' && ball.lastPlayer !== p && ball.lastTeam === 0 && ball.touches === 2 && handPos(p).distanceTo(ball.pos) < 1.35){ onSpike(team, p, d); hitBuf = 0; }
+      } else if (ball.state === 'flight' && teamOfSide(ball.pos.x) === team && dh > 1.1 && dh < 3.6 && ball.pos.y < 2.2 && p.act !== 'dive' && p.act !== 'down'){
+        dive(p, { x: ball.pos.x - p.pos.x, z: ball.pos.z - p.pos.z }); hitBuf = 0;
+      }
+    }
+  }
+  hitQ = false; jumpQ = false;
+}
+function contacts(){
+  if (ball.state !== 'flight' || S.state !== 'rally') return;
+  const team = teamOfSide(ball.pos.x);
+  if (ball.vel.y > 0 && team.phase !== 'attack') return;
+  for (const p of team.players){
+    if (ball.lastPlayer === p && ball.lastTeam === team.id && ball.kind !== 'block') continue;
+    const dh = Math.hypot(ball.pos.x - p.pos.x, ball.pos.z - p.pos.z);
+    if (team.phase === 'receive'){
+      if (team.leave && !p.human) continue;
+      const reach = p.act === 'dive' ? 1.6 : (p.human ? 1.25 : 1.05), hmin = p.act === 'dive' ? .15 : .35;
+      if (!p.air && dh < reach && ball.pos.y > hmin && ball.pos.y < 1.5){ onDig(team, p, p.act === 'dive'); return; }
+      if (p.air && handPos(p).distanceTo(ball.pos) < .7 && ball.lastTeam !== team.id && ball.kind !== 'spike'){ onDig(team, p, false); return; }
+    } else if (team.phase === 'set'){
+      if (p === team.attacker) continue;
+      const reach = p.human ? 1.8 : 1.25;
+      if (!p.air && dh < reach && ball.pos.y > .4 && ball.pos.y < 2.9 && ball.vel.y < 0){ onSet(team, p); return; }
+    } else if (team.phase === 'attack'){
+      if (p !== team.attacker) continue;
+      if (!p.human && p.air && handPos(p).distanceTo(ball.pos) < 1.0){ onSpike(team, p, null); return; }
+      if (!p.air && dh < 1.1 && ball.pos.y < 1.6 && ball.pos.y > .3 && ball.vel.y < 0){ onFreeBall(team, p); return; }
+    }
+  }
+}
+function physics(p, dt){
+  if (p.act === 'dive'){
+    p.actT += dt; p.vel.multiplyScalar(Math.exp(-2.5 * dt));
+    if (p.actT > .3){ p.act = 'down'; p.actT = 0; p.vel.set(0, 0, 0); puff(p.pos.x, p.pos.z, 16, 1.6); sfx('sand'); }
+  } else if (p.act === 'down'){ p.actT += dt; if (p.actT > .32){ p.act = 'idle'; p.actT = 0; } }
+  p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt;
+  if (p.air){ p.vy -= P_G * dt; p.y += p.vy * dt; if (p.y <= 0){ p.y = 0; p.vy = 0; p.air = false; puff(p.pos.x, p.pos.z, 8, 1.2); if (p.act === 'block' || p.act === 'spike') { p.act = 'idle'; } if (!p.human) p.vel.multiplyScalar(.3); } }
+  clampSide(p);
+  if (p.act !== 'idle' && p.act !== 'dive' && p.act !== 'down'){ p.actT += dt; const len = { dig: .45, set: .45, spike: .5, block: 9, serve: 9, cheer: 1.8 }[p.act] ?? .5; if (p.actT > len && !p.air) p.act = 'idle'; }
+  // face: toward the ball in play, otherwise toward the net
+  const team = TEAMS[p.team];
+  let fx = -team.sign, fz = 0;
+  if (ball.state !== 'held' && p.act !== 'dive' && p.act !== 'down'){ fx = ball.pos.x - p.pos.x; fz = ball.pos.z - p.pos.z; if (Math.sign(fx) === team.sign && Math.abs(fx) > 2) fx = -team.sign; }
+  if (p.act === 'dive' || p.act === 'down'){ fx = p.diveDir.x; fz = p.diveDir.z; }
+  const target = Math.atan2(-fz, fx); let dd = ((target - p.face + PI) % TAU + TAU) % TAU - PI; p.face += dd * (1 - Math.exp(-(p.human ? 18 : 10) * dt));
+}
+function pose(p, dt){
+  const u = p.parts, spd = Math.hypot(p.vel.x, p.vel.z);
+  p.phase += dt * spd * 2;
+  let legL = 0, legR = 0, armL = -.5, armR = -.5, armLz = 0, armRz = 0, lean = .12, crouch = 0, bodyRot = 0, bodyY = 0;
+  const run = Math.min(spd / 6, 1); lean += run * .12;
+  legL = Math.sin(p.phase) * .9 * run; legR = -legL; armL = -.4 - Math.sin(p.phase) * .6 * run; armR = -.4 + Math.sin(p.phase) * .6 * run;
+  if (spd < .5 && !p.air){ crouch = .12 + Math.sin(S.t * 3 + p.i) * .02; armL = armR = -.7; }
+  const k = p.actT;
+  switch (p.act){
+    case 'dig': armL = armR = -1.1; lean = .45; crouch = .28; break;
+    case 'set': armL = armR = -2.9; lean = -.1; break;
+    case 'spike': armL = -2.2; armR = k < .12 ? -3.1 : lerp(-3.1, .5, Math.min(1, (k - .12) / .18)); lean = k < .12 ? -.25 : .25; break;
+    case 'block': armL = armR = -3.05; lean = 0; break;
+    case 'serve': armL = -2.9; armR = -3; lean = -.15; break;
+    case 'cheer': armL = armR = -2.8 + Math.sin(S.t * 14) * .3; bodyY = Math.abs(Math.sin(S.t * 7)) * .25; break;
+    case 'dive': bodyRot = -1.25 * Math.min(1, k / .15); armL = armR = -2.8; legL = legR = .2; break;
+    case 'down': bodyRot = -1.45; armL = armR = -2.9; bodyY = -.55; break;
+  }
+  if (p.air && p.act !== 'spike' && p.act !== 'block'){ legL = -.5; legR = .3; }
+  if (p.air && (p.act === 'spike' || p.act === 'block')){ legL = -.35; legR = -.2; }
+  u.legs[0].rotation.z = legL; u.legs[1].rotation.z = legR;
+  u.arms[0].rotation.z = -armL; u.arms[1].rotation.z = -armR;
+  u.arms[0].rotation.x = -.12; u.arms[1].rotation.x = .12;
+  u.body.rotation.z = -lean + (p.act === 'dive' || p.act === 'down' ? bodyRot : 0);
+  u.body.position.y = -crouch * .6 + bodyY + (p.act === 'down' ? .3 : 0);
+  u.legs.forEach((l) => { l.position.y = .95; });
+  u.root.position.set(p.pos.x, p.y, p.pos.z);
+  u.root.rotation.y = p.face;
+}
+
+// ------------------------------------------------------------------ helpers for markers & hints
+function updateMarkers(){
+  youMark.position.set(human.pos.x, human.y + 2.55 + Math.sin(S.t * 5) * .06, human.pos.z); youMark.rotation.y += .05;
+  youRing.position.set(human.pos.x, .04, human.pos.z);
+  const t0 = TEAMS[0];
+  landRing.visible = S.state === 'rally' && t0.phase === 'receive' && !!t0.L && ball.state === 'flight';
+  if (landRing.visible){ landRing.position.set(t0.L.x, .05, t0.L.z); landRing.scale.setScalar(1 + .12 * Math.sin(S.t * 10)); }
+  setRing.visible = S.state === 'rally' && t0.phase === 'set' && t0.setter === human;
+  if (setRing.visible){ const t = timeToHeight(2.2); const q = t > 0 ? posAt(t) : t0.setPt; setRing.position.set(q.x, .05, q.z); }
+  spikeRing.visible = S.state === 'rally' && t0.phase === 'attack' && t0.attacker === human && ball.touches === 2;
+  if (spikeRing.visible){ spikeRing.position.set(t0.A.x - .3, .05, t0.A.z); spikeRing.scale.setScalar(1 + .15 * Math.sin(S.t * 12)); }
+}
+function updateHint(){
+  const t0 = TEAMS[0];
+  if (S.state === 'serve'){
+    if (S.server === human && ball.state === 'held') return hint('Your serve · <b>J</b> float · <b>K</b> jump serve · hold a direction to aim');
+    return hint(S.servingTeam === 0 ? 'Rico serves' : 'Get ready to receive. Stand under the ball to dig it');
+  }
+  if (S.state !== 'rally') return hint('&nbsp;');
+  if (t0.phase === 'receive') return hint('Get under the ball (white ring) · <b>J</b> to dive');
+  if (t0.phase === 'set') return hint(t0.setter === human ? 'Step into the <b>yellow ring</b> to set Rico' : 'Rico is setting you. Head for the net');
+  if (t0.phase === 'attack') return hint(t0.attacker === human ? '<b>K</b> jump as the ball drops, <b>J</b> to spike · hold a direction to aim' : 'Rico is attacking');
+  if (t0.phase === 'defend') return hint('They are attacking. <b>K</b> at the net to block, or drop back and dig');
+  hint('&nbsp;');
+}
+
+// ------------------------------------------------------------------ match flow
+function startMatch(){
+  audioInit(); if (AC && AC.state === 'suspended') AC.resume();
+  S.target = parseInt(document.querySelector('input[name=pts]:checked').value);
+  L = LEVELS[document.querySelector('input[name=lvl]:checked').value];
+  $('toN').textContent = S.target;
+  for (const t of TEAMS){ t.score = 0; t.serverIdx = 0; }
+  S.servingTeam = 0; S.stats = { k: 0, b: 0, a: 0, d: 0 };
+  $('title').hidden = true; $('over').hidden = true; $('hud').hidden = false;
+  if (isTouch){ $('touch').hidden = false; document.body.classList.add('touch'); }
+  updateScore(); setupServe();
+  banner('GAME ON', `First to ${S.target}, win by two`, 1.6); sfx('whistle');
+}
+function togglePause(){
+  if (S.demo) return;
+  if (S.state === 'paused'){ S.state = S.prevState; $('pause').hidden = true; AC?.resume(); }
+  else if (S.state === 'serve' || S.state === 'rally' || S.state === 'point'){ S.prevState = S.state; S.state = 'paused'; $('pause').hidden = false; AC?.suspend(); $('resumeBtn').focus(); }
+}
+function matchOver(){
+  const [a, b] = [TEAMS[0].score, TEAMS[1].score];
+  if (Math.max(a, b) < S.target || Math.abs(a - b) < 2) return false;
+  S.state = 'over';
+  const won = a > b;
+  let rec = { w: 0, l: 0 }; try { rec = JSON.parse(localStorage.getItem('spike89-rec')) || rec; } catch (e){}
+  won ? rec.w++ : rec.l++; try { localStorage.setItem('spike89-rec', JSON.stringify(rec)); } catch (e){}
+  $('overEyebrow').textContent = `FINAL · ${L === LEVELS.pro ? 'PRO' : 'ROOKIE'} · GAME TO ${S.target}`;
+  $('overTitle').textContent = won ? 'Sand Sharks win!' : 'Surf Kings take it';
+  $('overScore').innerHTML = `${a}<span> – </span>${b}`;
+  $('stK').textContent = S.stats.k; $('stB').textContent = S.stats.b; $('stA').textContent = S.stats.a; $('stD').textContent = S.stats.d; $('stR').textContent = `${rec.w}–${rec.l}`;
+  $('hud').hidden = true; $('touch').hidden = true; $('over').hidden = false; $('againBtn').focus();
+  if (won){ cheer(); sfx('cheer'); }
+  for (const p of TEAMS[won ? 0 : 1].players){ p.act = 'cheer'; p.actT = -99; }
+  return true;
+}
+
+// ------------------------------------------------------------------ main loop
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(.04, (now - last) / 1000); last = now;
+  if (S.state === 'paused'){ renderer.render(scene, camera); return; }
+  S.t += dt;
+  ocean.material.uniforms.t.value = S.t;
+  S.blockOK = TEAMS[1].blockTry;
+  if (S.state === 'serve' && S.server && !S.server.human && ball.state === 'held'){ S.serveT += dt; if (S.serveT > 1.3) doServe(Math.random() < (L === LEVELS.pro ? .45 : .25) ? 'jump' : 'float', null); }
+  if (!S.demo && (S.state === 'serve' || S.state === 'rally')) humanUpdate(dt);
+  for (const p of players) if (!p.human) aiUpdate(p, dt);
+  if (S.state === 'point'){ S.pointT += dt; if (S.pointT > 2.2){ if (S.demo || !matchOver()) setupServe(); } }
+  for (const p of players){ physics(p, dt); pose(p, dt); }
+  updateBall(dt);
+  contacts();
+  updateMarkers(); if (!S.demo && S.state !== 'over') updateHint();
+  updatePuffs(dt); updateCrowd(dt);
+  if (bannerT > 0){ bannerT -= dt; if (bannerT <= 0) $('banner').hidden = true; }
+  renderer.render(scene, camera);
+}
+async function init(){
+  try { await Promise.race([Promise.all([document.fonts.load('40px "Racing Sans One"'), document.fonts.load('20px "Russo One"')]), new Promise((r) => setTimeout(r, 2000))]); } catch (e){}
+  let rec = null; try { rec = JSON.parse(localStorage.getItem('spike89-rec')); } catch (e){}
+  if (rec && (rec.w || rec.l)) $('rec').textContent = `Your record against the Surf Kings: ${rec.w}–${rec.l}. Win by two. The team that wins the rally serves next.`;
+  human.human = false; S.servingTeam = 1; setupServe();
+  const b = $('startBtn'); b.disabled = false; b.textContent = 'Serve it up'; b.focus();
+  requestAnimationFrame(frame);
+}
+function begin(){ S.demo = false; human.human = true; startMatch(); }
+$('startBtn').addEventListener('click', begin);
+$('resumeBtn').addEventListener('click', togglePause);
+$('againBtn').addEventListener('click', begin);
+init();
+</script>
