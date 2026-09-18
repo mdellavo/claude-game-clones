@@ -26,4 +26,4 @@ Most games use ES modules, so serve them over HTTP instead of opening the files 
 cd <game> && python3 -m http.server 8080
 ```
 
-`xcom/` and `zelda/` use Vite. Run `npm install && npm run dev` in those folders. `balloon-fight/` is empty locally, so only the claude.ai version exists.
+`xcom/` and `zelda/` use Vite. Run `npm install && npm run dev` in those folders.
