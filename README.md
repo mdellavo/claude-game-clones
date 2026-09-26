@@ -1,6 +1,6 @@
 # Clones
 
-Browser games, mostly remakes of classics, one per subdirectory. Each one is published as a playable artifact on claude.ai. Every game was built by Claude Code, and the Prompt column quotes the request that started it, word for word, plus any follow-ups that changed the design.
+Browser games, mostly remakes of classics, one per subdirectory. Each one is published as a playable artifact on claude.ai. Every game was built by Claude Code, and the Prompt column quotes the request that started it, word for word, plus any follow-ups that changed the design. They all play on a phone as well as a desktop: tap the claude.ai link, and each game brings up its own on-screen controls.
 
 | Game | Description | Prompt | Play | Screenshots |
 | --- | --- | --- | --- | --- |
@@ -30,3 +30,7 @@ cd <game> && python3 -m http.server 8080
 ```
 
 `xcom/` and `zelda/` use Vite. Run `npm install && npm run dev` in those folders.
+
+## On a phone
+
+Every game detects a touch screen and shows controls to match: a thumbstick and action buttons for the 3D games, a D-pad and A/B buttons for the NES-style ones, and a camera pad for X-COM's battlescape. The published claude.ai versions are the easiest way to play on a phone. To play a local copy, serve it as above and open the address on your phone over the same network.
