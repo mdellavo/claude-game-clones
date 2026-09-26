@@ -249,9 +249,43 @@ body.touch #balance{bottom:calc(178px + env(safe-area-inset-bottom,0px))}
   </div>
 </div>
 
+<script>
+/* If the module below never runs — blocked CDN, no import-map support — say so
+   instead of leaving a title card whose buttons do nothing. */
+window.__WC = { ready: false };
+function wcFail(msg) {
+  var el = document.getElementById('bootErr');
+  if (!el) {
+    el = document.createElement('p');
+    el.id = 'bootErr';
+    el.className = 'fine';
+    el.style.cssText = 'color:#ff8a6b;font-style:normal;font-weight:600;max-width:52ch';
+    var row = document.querySelector('#title .row');
+    if (row) row.appendChild(el); else document.body.appendChild(el);
+  }
+  el.textContent = msg;
+}
+addEventListener('load', function () {
+  setTimeout(function () {
+    if (!window.__WC.ready) {
+      wcFail('This page could not load its 3D library, so the game cannot start. It needs network access to cdn.jsdelivr.net.');
+    }
+  }, 4000);
+});
+</script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
 <script type="module">
-import * as THREE from 'three';
+let THREE;
+try {
+  THREE = await import('three');
+} catch (e1) {
+  try {
+    THREE = await import('https://unpkg.com/three@0.170.0/build/three.module.js');
+  } catch (e2) {
+    wcFail('Could not load three.js: ' + (e1 && e1.message ? e1.message : e1));
+    throw e2;
+  }
+}
 
 /* ==================================================================
    Wake Cutter — wakeboarding behind a boat that never slows down
@@ -286,6 +320,15 @@ const pathX = z => Math.sin(z * .0032) * 5.4 + Math.sin(z * .0071 + 1.3) * 2.8 +
 const SND = { ctx: null, mute: false };
 function actx() {
   if (SND.ctx) return SND.ctx;
+  if (SND.dead) return null;
+  try {
+    return actxBuild();
+  } catch (e) {
+    SND.dead = true;       /* no audio here; the game still plays */
+    return null;
+  }
+}
+function actxBuild() {
   const C = window.AudioContext || window.webkitAudioContext;
   if (!C) return null;
   const c = new C();
@@ -1718,9 +1761,17 @@ function frame(now) {
   renderer.render(scene, cam);
 }
 function boot() {
+  /* wire the controls first: a button that does nothing is the worst failure */
+  $('start').addEventListener('click', () => { actx(); startRun(RUN.board); });
+  $('again').addEventListener('click', () => startRun(RUN.board));
+  $('menu').addEventListener('click', showTitle);
+  $('resume').addEventListener('click', () => pause(false));
+  $('quit').addEventListener('click', endRun);
+  buildBoardCards();
+  showTitle();
+  window.__WC.ready = true;
   resize();
   buildGeo();
-  buildBoardCards();
   /* a quiet lake behind the title card */
   genCourse(12345);
   buildWorld();
@@ -1728,13 +1779,12 @@ function boot() {
   BOAT.z = 60; BOAT.x = pathX(60); WAKE.z = 60;
   R.x = BOAT.x; R.z = 40; R.y = .02; R.lat = 0;
   cam3.x = R.x; cam3.y = 3.4; cam3.z = R.z - 10;
-  showTitle();
-  $('start').addEventListener('click', () => { actx(); startRun(RUN.board); });
-  $('again').addEventListener('click', () => startRun(RUN.board));
-  $('menu').addEventListener('click', showTitle);
-  $('resume').addEventListener('click', () => pause(false));
-  $('quit').addEventListener('click', endRun);
   requestAnimationFrame(frame);
 }
-boot();
+try {
+  boot();
+} catch (e) {
+  wcFail('The game failed to start: ' + (e && e.message ? e.message : e));
+  throw e;
+}
 </script>
