@@ -34,3 +34,16 @@ cd <game> && python3 -m http.server 8080
 ## On a phone
 
 Every game detects a touch screen and shows controls to match: a thumbstick and action buttons for the 3D games, a D-pad and A/B buttons for the NES-style ones, and a camera pad for X-COM's battlescape. The published claude.ai versions are the easiest way to play on a phone. To play a local copy, serve it as above and open the address on your phone over the same network.
+
+## Ideas
+- mountain biking game
+- wingsuit game 
+- pilotwings games
+- turn based arcade shooter ala cod
+- runner game where you run through foggy woods away from ufos and aliens, i hate laser beams
+- marble madness
+- hackeysack game
+- launcher screen
+- 2.5 dog fight game
+- isometric contra shooter 
+- add agents.md 
