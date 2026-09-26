@@ -11,5 +11,39 @@
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
-  </body>
+  
+<style>
+#tpad{position:fixed;right:6px;top:calc(56px + env(safe-area-inset-top,0px));z-index:60;display:none;
+  grid-template-columns:repeat(2,42px);gap:5px}
+body.touchdev #tpad{display:grid}
+#tpad button{width:44px;height:44px;border:1px solid #4b6b7d;background:rgba(10,24,34,.82);color:#cfe8f5;
+  font:700 15px/1 "Silkscreen",monospace;border-radius:4px;touch-action:none}
+#tpad button:active{background:#1d5f80;color:#fff}
+</style>
+<div id="tpad" aria-label="Camera controls">
+  <button type="button" data-key="q" aria-label="Rotate left">&#8634;</button>
+  <button type="button" data-key="e" aria-label="Rotate right">&#8635;</button>
+  <button type="button" data-key="=" aria-label="Zoom in">+</button>
+  <button type="button" data-key="-" aria-label="Zoom out">&#8722;</button>
+  <button type="button" data-key="]" aria-label="Level up">&#9650;</button>
+  <button type="button" data-key="[" aria-label="Level down">&#9660;</button>
+  <button type="button" data-key="Tab" aria-label="Next soldier">NXT</button>
+  <button type="button" data-key="c" aria-label="Centre on soldier">CTR</button>
+</div>
+<script>
+/* Touch devices have no keyboard, so give the camera and unit cycling real buttons. */
+(function () {
+  if (!matchMedia('(pointer: coarse)').matches) return;
+  document.body.classList.add('touchdev');
+  document.getElementById('tpad').querySelectorAll('button').forEach(function (b) {
+    b.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      var k = b.dataset.key;
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: k, code: k, bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: k, code: k, bubbles: true }));
+    });
+  });
+})();
+</script>
+</body>
 </html>

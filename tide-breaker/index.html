@@ -41,5 +41,41 @@
     <div id="loading">Loading…</div>
   </div>
   <script type="module" src="src/main.js"></script>
+
+<style>
+#touch{position:fixed;inset:auto 0 0 0;z-index:40;pointer-events:none;height:170px;font-family:inherit}
+#touch .tb{position:absolute;pointer-events:auto;touch-action:none;border-radius:50%;border:2px solid rgba(255,255,255,.7);
+  background:rgba(12,32,48,.45);color:#fff;font-weight:700;font-size:13px;letter-spacing:.04em;backdrop-filter:blur(3px)}
+#touch .tb.on{background:rgba(255,255,255,.8);color:#0c2030}
+#touch .l{left:20px;bottom:calc(24px + env(safe-area-inset-bottom,0px));width:74px;height:74px}
+#touch .r{left:108px;bottom:calc(24px + env(safe-area-inset-bottom,0px));width:74px;height:74px}
+#touch .gas{right:20px;bottom:calc(24px + env(safe-area-inset-bottom,0px));width:92px;height:92px;font-size:15px}
+#touch .trick{right:120px;bottom:calc(58px + env(safe-area-inset-bottom,0px));width:74px;height:74px}
+</style>
+<div id="touch" hidden>
+  <button class="tb l" type="button" data-code="ArrowLeft" aria-label="Steer left">&#9664;</button>
+  <button class="tb r" type="button" data-code="ArrowRight" aria-label="Steer right">&#9654;</button>
+  <button class="tb trick" type="button" data-code="Space" aria-label="Trick">TRICK</button>
+  <button class="tb gas" type="button" data-code="ArrowUp" aria-label="Throttle">GAS</button>
+</div>
+<script>
+/* On-screen controls for phones: they press the same keys the game already listens for. */
+(function () {
+  if (!matchMedia('(pointer: coarse)').matches) return;
+  var box = document.getElementById('touch');
+  box.hidden = false;
+  box.querySelectorAll('.tb').forEach(function (b) {
+    var code = b.dataset.code, down = false;
+    function on(e) { e.preventDefault(); if (down) return; down = true; b.classList.add('on');
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: code, key: code, bubbles: true })); }
+    function off(e) { if (e) e.preventDefault(); if (!down) return; down = false; b.classList.remove('on');
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: code, key: code, bubbles: true })); }
+    b.addEventListener('pointerdown', on);
+    b.addEventListener('pointerup', off);
+    b.addEventListener('pointercancel', off);
+    b.addEventListener('pointerleave', off);
+  });
+})();
+</script>
 </body>
 </html>

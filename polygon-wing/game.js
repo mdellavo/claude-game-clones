@@ -713,7 +713,7 @@
 
   const view = $('view');
   view.tabIndex = -1;
-  let touchUsed = false;
+  let touchUsed = matchMedia('(pointer: coarse)').matches;
   const touch = { id: null, sx: 0, sy: 0, ax: 0, ay: 0, active: false, brake: false, boost: false };
   view.addEventListener('pointerdown', (e) => {
     if (mode !== 'play') return;
