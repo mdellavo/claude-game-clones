@@ -1,0 +1,714 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Granite Line</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Azeret+Mono:wght@400;600&family=Figtree:wght@400;500;700&display=swap">
+<style>
+:root{
+  --ink:#0c1118; --rock:#4b525e; --snow:#eef5fb; --sky:#74a9dd; --gold:#ffb055; --mint:#47f0c0; --alert:#ff5a48;
+  --display:"Anton","Arial Narrow",Impact,sans-serif;
+  --mono:"Azeret Mono","SFMono-Regular",Consolas,monospace;
+  --body:"Figtree","Helvetica Neue",Arial,sans-serif;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--ink);color:var(--snow);overflow:hidden;font-family:var(--body);-webkit-tap-highlight-color:transparent}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#grade{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(ellipse at 50% 46%,transparent 40%,rgba(8,12,20,.62) 100%)}
+#rush{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:radial-gradient(ellipse at 50% 50%,transparent 42%,rgba(190,225,255,.22) 100%)}
+#flash{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:0;transition:opacity .45s}
+
+/* ---------- flight computer ---------- */
+#hud{position:fixed;inset:0;z-index:5;pointer-events:none;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.br{position:absolute;padding:9px 13px 11px;background:rgba(10,16,24,.52);backdrop-filter:blur(3px);
+  border:1px solid rgba(238,245,251,.14);border-left:2px solid var(--mint)}
+.k{display:block;font-size:10px;letter-spacing:.22em;color:rgba(238,245,251,.55);margin-bottom:3px}
+.v{font-size:26px;line-height:1;font-weight:600}
+.v small{font-size:11px;letter-spacing:.1em;color:rgba(238,245,251,.55);margin-left:4px;font-weight:400}
+#alt{left:16px;top:calc(16px + env(safe-area-inset-top,0px));min-width:126px}
+#spd{left:16px;top:calc(92px + env(safe-area-inset-top,0px));min-width:126px}
+#prox{left:16px;top:calc(168px + env(safe-area-inset-top,0px));width:126px;border-left-color:var(--gold)}
+#proxBar{height:7px;margin-top:6px;background:rgba(238,245,251,.16)}
+#proxBar i{display:block;height:100%;width:0;background:var(--gold);transition:width .12s linear}
+#prox.hot{border-left-color:var(--alert)}
+#prox.hot #proxBar i{background:var(--alert)}
+#gates{right:16px;top:calc(16px + env(safe-area-inset-top,0px));text-align:right;border-left:0;border-right:2px solid var(--mint);min-width:126px}
+#score{right:16px;top:calc(92px + env(safe-area-inset-top,0px));text-align:right;border-left:0;border-right:2px solid var(--gold);min-width:126px}
+#streak{color:var(--gold);font-size:13px}
+#bearing{position:absolute;left:50%;top:50%;width:190px;height:190px;margin:-95px 0 0 -95px}
+#bearing svg{width:100%;height:100%;overflow:visible}
+#bDist{position:absolute;left:50%;top:calc(50% + 104px);transform:translateX(-50%);font-size:12px;letter-spacing:.16em;color:rgba(238,245,251,.75);text-shadow:0 1px 6px #000}
+#call{position:fixed;left:0;right:0;top:20%;z-index:6;text-align:center;pointer-events:none;font-family:var(--display);
+  font-size:clamp(34px,6vw,68px);letter-spacing:.01em;line-height:1;opacity:0;transition:opacity .18s;text-shadow:0 4px 24px rgba(8,12,20,.8)}
+#call.on{opacity:1}
+#call small{display:block;font-family:var(--mono);font-size:.26em;letter-spacing:.24em;margin-top:10px;color:var(--gold)}
+#call.good{color:var(--mint)} #call.bad{color:var(--alert)} #call.gold{color:var(--gold)}
+#chute{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:6;
+  font-family:var(--mono);font-size:13px;letter-spacing:.2em;padding:9px 18px;border:1px solid var(--mint);color:var(--mint);
+  background:rgba(10,16,24,.6);animation:pulse 1s steps(2) infinite}
+@keyframes pulse{50%{opacity:.35}}
+
+/* ---------- screens ---------- */
+.screen{position:fixed;inset:0;z-index:10;display:flex;align-items:center;padding:24px 18px;overflow:auto;
+  background:linear-gradient(100deg,rgba(8,12,20,.93) 30%,rgba(8,12,20,.6) 70%,rgba(8,12,20,.2))}
+.panel{max-width:560px;margin-left:clamp(0px,7vw,110px);display:flex;flex-direction:column;gap:15px}
+.tag{font-family:var(--mono);font-size:11px;letter-spacing:.26em;color:var(--mint)}
+h1{font-family:var(--display);font-size:clamp(58px,10vw,116px);line-height:.86;margin:0;letter-spacing:.005em;text-transform:uppercase;text-wrap:balance}
+h1 em{font-style:normal;display:block;color:var(--gold)}
+h2{font-family:var(--display);font-size:clamp(34px,6vw,58px);line-height:.92;margin:0;text-transform:uppercase}
+.lede{font-size:17px;line-height:1.5;margin:0;max-width:60ch;color:rgba(238,245,251,.84)}
+.lede b{color:var(--snow);font-weight:700}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:7px 18px;margin:0;font-size:15px}
+.keys dt{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--mint);white-space:nowrap;align-self:center}
+.keys dd{margin:0;color:rgba(238,245,251,.8)}
+.btn{align-self:flex-start;font-family:var(--display);font-size:24px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink);
+  background:var(--mint);border:0;padding:12px 30px;cursor:pointer;clip-path:polygon(0 0,100% 0,calc(100% - 14px) 100%,0 100%)}
+.btn:hover{background:var(--snow)}
+.btn:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
+.btn.ghost{background:transparent;color:var(--snow);box-shadow:inset 0 0 0 1px rgba(238,245,251,.5);font-size:18px;padding:10px 22px}
+.fine{font-size:13px;margin:0;color:rgba(238,245,251,.55);font-family:var(--mono);letter-spacing:.06em}
+.tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:9px;margin:0}
+.tally div{padding:9px 12px 11px;background:rgba(238,245,251,.06);border-left:2px solid rgba(71,240,192,.5)}
+.tally dt{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:rgba(238,245,251,.55)}
+.tally dd{margin:3px 0 0;font-family:var(--mono);font-size:21px;font-weight:600}
+.tally dd.hi{color:var(--gold)}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+
+/* ---------- touch ---------- */
+#touch{position:fixed;inset:auto 0 0 0;height:190px;z-index:8;pointer-events:none;display:none}
+body.touch #touch{display:block}
+body.touch #chute{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
+#stick{position:absolute;left:18px;bottom:calc(20px + env(safe-area-inset-bottom,0px));width:132px;height:132px;border-radius:50%;
+  border:1px solid rgba(238,245,251,.45);background:rgba(10,16,24,.4);pointer-events:auto;touch-action:none}
+#nub{position:absolute;left:41px;top:41px;width:50px;height:50px;border-radius:50%;background:rgba(238,245,251,.75)}
+.tb{position:absolute;pointer-events:auto;touch-action:none;font-family:var(--mono);font-size:12px;letter-spacing:.14em;
+  color:var(--snow);background:rgba(10,16,24,.55);border:1px solid rgba(238,245,251,.45);border-radius:50%}
+#tTuck{right:20px;bottom:calc(24px + env(safe-area-inset-bottom,0px));width:94px;height:94px}
+#tChute{right:124px;bottom:calc(58px + env(safe-area-inset-bottom,0px));width:76px;height:76px;border-color:var(--mint);color:var(--mint)}
+@media (max-width:640px){ .panel{margin-left:0} .screen{align-items:flex-start} #bearing{width:140px;height:140px;margin:-70px 0 0 -70px} #bDist{top:calc(50% + 80px)} }
+@media (prefers-reduced-motion:reduce){#chute{animation:none}#call,#rush{transition:none}}
+</style>
+
+<canvas id="gl" aria-label="Granite Line wingsuit view"></canvas>
+<div id="grade"></div>
+<div id="rush"></div>
+<div id="flash"></div>
+
+<div id="hud" hidden>
+  <div class="br" id="alt"><span class="k">ALTITUDE AGL</span><span class="v" id="vAlt">0<small>M</small></span></div>
+  <div class="br" id="spd"><span class="k">AIRSPEED</span><span class="v" id="vSpd">0<small>KM/H</small></span></div>
+  <div class="br" id="prox"><span class="k">PROXIMITY</span><div id="proxBar"><i></i></div></div>
+  <div class="br" id="gates"><span class="k">RINGS</span><span class="v" id="vGates">0<small>/18</small></span><div id="streak"></div></div>
+  <div class="br" id="score"><span class="k">SCORE</span><span class="v" id="vScore">0</span></div>
+  <div id="bearing">
+    <svg viewBox="-100 -100 200 200" aria-hidden="true">
+      <circle r="88" fill="none" stroke="rgba(238,245,251,.16)" stroke-width="1"/>
+      <path d="M0 -88 L0 -76 M88 0 L76 0 M0 88 L0 76 M-88 0 L-76 0" stroke="rgba(238,245,251,.3)" stroke-width="2"/>
+      <g id="bArrow"><path d="M0 -58 L13 -36 L0 -43 L-13 -36 Z" fill="#47f0c0"/></g>
+    </svg>
+  </div>
+  <div id="bDist"></div>
+</div>
+<div id="call"></div>
+<div id="chute" hidden>PULL — SPACE</div>
+
+<div class="screen" id="title">
+  <div class="panel">
+    <div class="tag">EXIT 1500 M · 18 RINGS · ONE CANOPY</div>
+    <h1>Granite<em>Line</em></h1>
+    <p class="lede">Step off the ridge and fly the valley down. Dive to build speed, flare to stretch the glide, roll to carve, and put yourself through every ring on the way. The rock pays you for flying close to it — <b>right up until it doesn't</b>. Pull the canopy over the meadow at the bottom.</p>
+    <dl class="keys">
+      <dt>A D / ← →</dt><dd>Roll. Bank hard to turn hard</dd>
+      <dt>W / S</dt><dd>Dive for speed · flare to hold altitude</dd>
+      <dt>SHIFT</dt><dd>Tuck — fastest line, least lift</dd>
+      <dt>SPACE</dt><dd>Pull the canopy once the meadow is in reach</dd>
+      <dt>P · M</dt><dd>Pause · mute</dd>
+    </dl>
+    <div class="row">
+      <button class="btn" id="start" type="button">Step off</button>
+      <p class="fine" id="best"></p>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="pause" hidden>
+  <div class="panel">
+    <div class="tag">HOLDING</div>
+    <h2>Paused mid-glide</h2>
+    <div class="row"><button class="btn" id="resume" type="button">Fly on</button><button class="btn ghost" id="quit" type="button">End flight</button></div>
+  </div>
+</div>
+
+<div class="screen" id="over" hidden>
+  <div class="panel">
+    <div class="tag" id="overTag">FLIGHT LOG</div>
+    <h2 id="overTitle">Down safe</h2>
+    <p class="lede" id="overText"></p>
+    <dl class="tally" id="tally"></dl>
+    <div class="row"><button class="btn" id="again" type="button">Fly it again</button></div>
+  </div>
+</div>
+
+<div id="touch">
+  <div id="stick"><div id="nub"></div></div>
+  <button class="tb" id="tTuck" type="button">TUCK</button>
+  <button class="tb" id="tChute" type="button">PULL</button>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const $ = (id) => document.getElementById(id);
+const TAU = Math.PI * 2, PI = Math.PI;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+const rnd = (a, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
+const fmt = (n) => Math.round(n).toLocaleString('en-US');
+const isTouch = matchMedia('(pointer: coarse)').matches;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const hash = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
+
+/* ---------- the valley ----------
+   u runs down the course, v across it, y is altitude in metres.          */
+const S2 = Math.SQRT1_2;
+const wx = (u, v) => v;                 /* the course runs along -z, across +x */
+const wz = (u, v) => -u;
+const FLOOR0 = 1800, GRADE = .26, COURSE = 4000, LZ_U = 3880;
+const floorY = (u) => FLOOR0 - u * GRADE + Math.sin(u * .0013) * 34 + Math.sin(u * .0031 + 1.1) * 13;
+const valleyW = (u) => 92 + Math.sin(u * .0009) * 26 + Math.sin(u * .0022 + 2.2) * 12;
+function spires(u, v){
+  let h = 0;
+  const CU = 150, CV = 130;
+  const ci = Math.floor(u / CU), cj = Math.floor(v / CV);
+  for (let i = ci; i <= ci + 1; i++) for (let j = cj; j <= cj + 1; j++){
+    const r0 = hash(i, j);
+    if (r0 > .42) continue;                                  /* only some cells carry a tower */
+    const cu = (i + hash(i + 3.1, j) * .8 + .1) * CU, cv = (j + hash(i, j + 7.7) * .8 + .1) * CV;
+    const rad = 26 + hash(i + 11, j + 5) * 34, ht = 50 + hash(i + 2, j + 19) * 120;
+    const d = Math.hypot(u - cu, v - cv);
+    if (d < rad) h += (Math.cos(PI * d / rad) * .5 + .5) * ht;
+  }
+  return h;
+}
+function terrainY(u, v){
+  const f = floorY(u), w = valleyW(u), a = Math.abs(v);
+  let h = f + Math.sin(u * .017) * 4 + Math.sin(v * .013 + u * .004) * 5;
+  if (a > w) h += Math.pow(a - w, 1.5) * .34;                /* the walls */
+  h += spires(u, v);
+  const d = Math.hypot(u - LZ_U, v);                          /* the meadow is flat */
+  if (d < 120) h = lerp(h, floorY(LZ_U) + 3, smooth(120, 40, d));
+  return h;
+}
+
+/* ---------- renderer ---------- */
+const canvas = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+const scene = new THREE.Scene();
+const HAZE = new THREE.Color(0x9fc2e0);
+scene.fog = new THREE.Fog(HAZE, 700, 2700);
+const cam = new THREE.PerspectiveCamera(64, 1, .6, 4200);
+function resize(){ renderer.setSize(innerWidth, innerHeight, false); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
+addEventListener('resize', resize);
+scene.add(new THREE.HemisphereLight(0xcfe6fb, 0x5b6678, 2.05));
+const sun = new THREE.DirectionalLight(0xffd9ad, 2.9); sun.position.set(-420, 900, -320); scene.add(sun);
+
+const sky = new THREE.Mesh(new THREE.SphereGeometry(3400, 32, 18), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  vertexShader: `varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader: `varying vec3 vP;void main(){vec3 d=normalize(vP);float h=d.y;
+    vec3 low=vec3(.98,.78,.6),mid=vec3(.55,.72,.9),top=vec3(.13,.29,.55);
+    vec3 c=mix(low,mid,smoothstep(-.06,.26,h));c=mix(c,top,smoothstep(.26,.85,h));
+    float s=max(dot(d,normalize(vec3(-.3,.16,-1.))),0.);
+    c+=vec3(1.,.82,.55)*(smoothstep(.9975,.9992,s)*1.6+pow(s,22.)*.34);
+    gl_FragColor=vec4(c,1.);}`,
+}));
+scene.add(sky);
+
+/* ---------- terrain mesh (fine near the flyer, coarse out to the horizon) ---------- */
+const NU = 112, NV = 86;
+const tGeo = new THREE.BufferGeometry();
+const tPos = new Float32Array((NU + 1) * (NV + 1) * 3), tCol = new Float32Array((NU + 1) * (NV + 1) * 3);
+{
+  const idx = new Uint32Array(NU * NV * 6); let o = 0;
+  for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++){
+    const a = j * (NU + 1) + i, b = a + 1, c = a + NU + 1, d = c + 1;
+    idx[o++] = a; idx[o++] = c; idx[o++] = b; idx[o++] = b; idx[o++] = c; idx[o++] = d;
+  }
+  tGeo.setIndex(new THREE.BufferAttribute(idx, 1));
+  tGeo.setAttribute('position', new THREE.BufferAttribute(tPos, 3));
+  tGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3));
+}
+const land = new THREE.Mesh(tGeo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+land.frustumCulled = false; scene.add(land);
+const FU = new Float32Array(NU + 1), FV = new Float32Array(NV + 1);
+for (let i = 0; i <= NU; i++){ const t = i / NU; FU[i] = -120 + Math.pow(t, 1.9) * 2300; }
+for (let j = 0; j <= NV; j++){ const t = -1 + 2 * j / NV; FV[j] = t * 60 + t * t * t * 520; }
+const C_ROCK = new THREE.Color(0x7d8696), C_DARK = new THREE.Color(0x515a68), C_SNOW = new THREE.Color(0xeef5fd), C_GRASS = new THREE.Color(0x5f8752), C_SCREE = new THREE.Color(0x9ca5b1);
+function updateTerrain(pu, pv){
+  for (let j = 0; j <= NV; j++){
+    const v = pv + FV[j];
+    for (let i = 0; i <= NU; i++){
+      const u = pu + FU[i], k = (j * (NU + 1) + i) * 3;
+      const y = terrainY(u, v);
+      tPos[k] = wx(u, v); tPos[k + 1] = y; tPos[k + 2] = wz(u, v);
+      const du = (terrainY(u + 9, v) - y) / 9, dv = (terrainY(u, v + 9) - y) / 9;
+      const steep = clamp(Math.hypot(du + GRADE, dv) * 1.25, 0, 1);
+      const alt = clamp((y - (floorY(u) + 120)) / 420, 0, 1);            /* snow line follows the valley down */
+      const c = C_GRASS.clone().lerp(C_ROCK, smooth(0, .45, steep) * .85 + alt * .5);
+      c.lerp(C_SCREE, smooth(.45, .9, steep) * .5);
+      c.lerp(C_SNOW, alt * alt * (1 - steep * .55));
+      c.lerp(C_DARK, smooth(.7, 1, steep) * .35);
+      tCol[k] = c.r; tCol[k + 1] = c.g; tCol[k + 2] = c.b;
+    }
+  }
+  tGeo.attributes.position.needsUpdate = true; tGeo.attributes.color.needsUpdate = true;
+  tGeo.computeVertexNormals();
+}
+
+/* ---------- rings ---------- */
+const RINGS = 18, RAD = 9;
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x47f0c0 });
+const ringDone = new THREE.MeshBasicMaterial({ color: 0xffb055 });
+const ringGeo = new THREE.TorusGeometry(RAD, .55, 8, 40);
+const haloGeo = new THREE.RingGeometry(RAD - .5, RAD + 2.4, 40);
+const rings = [];
+function buildRings(){
+  for (const r of rings) scene.remove(r.mesh);
+  rings.length = 0;
+  for (let i = 0; i < RINGS; i++){
+    const u = 300 + i * ((LZ_U - 520) / RINGS);
+    let v = Math.sin(i * .9) * 34 + Math.sin(i * 2.3) * 16;
+    let y = 0;
+    for (let tries = 0; tries < 24; tries++){                 /* keep the hoop clear of the rock */
+      y = Math.max(terrainY(u, v), terrainY(u, v - RAD), terrainY(u, v + RAD)) + 30 + (i % 3) * 18 + Math.max(0, 150 - i * 26);
+      const gap = y - RAD - Math.max(terrainY(u - 12, v), terrainY(u + 12, v));
+      if (gap > 6) break;
+      v += 12;
+    }
+    const g = new THREE.Group();
+    const torus = new THREE.Mesh(ringGeo, ringMat.clone()); g.add(torus);
+    const halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ color: 0x47f0c0, transparent: true, opacity: .18, side: THREE.DoubleSide })); g.add(halo);
+    g.position.set(wx(u, v), y, wz(u, v));
+    scene.add(g);
+    rings.push({ i, u, v, y, mesh: g, torus, halo, done: false });
+  }
+}
+
+/* ---------- pines along the valley floor ---------- */
+const pineGeo = (() => {
+  const merge = (list) => {
+    const ps = list.map((g) => g.index ? g.toNonIndexed() : g);
+    let n = 0; for (const p of ps) n += p.attributes.position.count;
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3);
+    let o = 0;
+    for (const p of ps){
+      pos.set(p.attributes.position.array, o * 3); nor.set(p.attributes.normal.array, o * 3); col.set(p.attributes.color.array, o * 3);
+      o += p.attributes.position.count; p.dispose();
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.computeBoundingSphere(); return g;
+  };
+  const tint = (g, c) => { const col = new THREE.Color(c), n = g.attributes.position.count, a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++){ a[i * 3] = col.r; a[i * 3 + 1] = col.g; a[i * 3 + 2] = col.b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
+  const trunk = tint(new THREE.CylinderGeometry(.5, .8, 4, 5), 0x4a3a2c); trunk.translate(0, 2, 0);
+  const c1 = tint(new THREE.ConeGeometry(3.4, 8, 6), 0x24462f); c1.translate(0, 7, 0);
+  const c2 = tint(new THREE.ConeGeometry(2.4, 6, 6), 0x2c5238); c2.translate(0, 11, 0);
+  return merge([trunk, c1, c2]);
+})();
+const PINES = 420;
+const pines = new THREE.InstancedMesh(pineGeo, new THREE.MeshLambertMaterial({ vertexColors: true }), PINES);
+pines.frustumCulled = false; pines.count = 0; scene.add(pines);
+const dummy = new THREE.Object3D();
+function updatePines(pu){
+  let n = 0;
+  const startCell = Math.floor((pu - 100) / 46);
+  for (let c = startCell; c < startCell + 44 && n < PINES; c++){
+    for (let s = 0; s < 6 && n < PINES; s++){
+      const hu = hash(c, s * 3.3), hv = hash(c + 5.5, s);
+      if (hu > .72) continue;
+      const u = c * 46 + hu * 46, w = valleyW(u);
+      const v = (s % 2 ? 1 : -1) * (w * (.35 + hv * .85));
+      const y = terrainY(u, v);
+      if (y > floorY(u) + 210) continue;                       /* above the treeline */
+      const du = (terrainY(u + 8, v) - y) / 8 + GRADE, dv = (terrainY(u, v + 8) - y) / 8;
+      if (Math.hypot(du, dv) > .85) continue;                  /* too steep to hold soil */
+      dummy.position.set(wx(u, v), y, wz(u, v));
+      dummy.rotation.set(0, hv * TAU, 0);
+      dummy.scale.setScalar(.8 + hu * 1.1);
+      dummy.updateMatrix(); pines.setMatrixAt(n++, dummy.matrix);
+    }
+  }
+  pines.count = n; pines.instanceMatrix.needsUpdate = true;
+}
+
+/* ---------- the flyer ---------- */
+const flyer = new THREE.Group(), flyerRoll = new THREE.Group();
+flyer.add(flyerRoll); scene.add(flyer);
+const canopy = new THREE.Group(); canopy.visible = false; flyer.add(canopy);
+{
+  const L = (c) => new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide });
+  const suit = L(0x20242e), trim = L(0xffb055), skin = L(0xe2b48c);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(.30, 1.15, 4, 10), suit); body.rotation.x = PI / 2; flyerRoll.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.26, 12, 10), L(0xe8eef6)); head.position.set(0, .12, .92); flyerRoll.add(head);
+  const vis = new THREE.Mesh(new THREE.BoxGeometry(.34, .12, .06), L(0x141922)); vis.position.set(0, .12, 1.14); flyerRoll.add(vis);
+  /* arm wings: shoulder to hip */
+  for (const s of [-1, 1]){
+    const wing = new THREE.Mesh(new THREE.BufferGeometry(), suit);
+    const p = new Float32Array([0, 0, .55, s * 1.5, -.06, -.15, 0, 0, -.7]);
+    wing.geometry.setAttribute('position', new THREE.BufferAttribute(p, 3));
+    wing.geometry.computeVertexNormals();
+    flyerRoll.add(wing);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(.09, 1.25, 3, 6), suit);
+    arm.rotation.z = PI / 2 * s; arm.rotation.y = -s * .22; arm.position.set(s * .78, 0, .2); flyerRoll.add(arm);
+    const glove = new THREE.Mesh(new THREE.SphereGeometry(.11, 8, 6), trim); glove.position.set(s * 1.46, -.04, -.12); flyerRoll.add(glove);
+  }
+  /* leg wing */
+  const legs = new THREE.Mesh(new THREE.BufferGeometry(), suit);
+  const lp = new Float32Array([-.36, 0, -.55, .36, 0, -.55, -.3, -.02, -1.75, .36, 0, -.55, .3, -.02, -1.75, -.3, -.02, -1.75]);
+  legs.geometry.setAttribute('position', new THREE.BufferAttribute(lp, 3));
+  legs.geometry.computeVertexNormals(); flyerRoll.add(legs);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(.1, .06, 1.4), trim); stripe.position.set(0, .3, 0); flyerRoll.add(stripe);
+  /* canopy for the landing */
+  const cell = new THREE.Mesh(new THREE.SphereGeometry(4.6, 18, 8, 0, TAU, 0, PI * .42), L(0x47f0c0));
+  cell.scale.set(1.5, .5, .85); cell.position.y = 7.4; canopy.add(cell);
+  for (const s of [-1, 1]){
+    const line = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, 7.2, 4), L(0xdde6f0));
+    line.position.set(s * 2.2, 3.8, 0); line.rotation.z = -s * .16; canopy.add(line);
+  }
+}
+
+/* ---------- speed streaks ---------- */
+const SN = 260, sPos = new Float32Array(SN * 6), sAge = new Float32Array(SN);
+const sGeo = new THREE.BufferGeometry(); sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+const streaks = new THREE.LineSegments(sGeo, new THREE.LineBasicMaterial({ color: 0xdff0ff, transparent: true, opacity: .5 }));
+streaks.frustumCulled = false; scene.add(streaks);
+
+/* ---------- audio ---------- */
+const A = { ctx: null, mute: false, dead: false };
+function ac(){
+  if (A.ctx || A.dead) return A.ctx;
+  try {
+    const C = window.AudioContext || window.webkitAudioContext; if (!C) { A.dead = true; return null; }
+    const c = new C(); A.ctx = c;
+    A.out = c.createGain(); A.out.gain.value = .5; A.out.connect(c.destination);
+    const n = c.createBuffer(1, c.sampleRate, c.sampleRate), d = n.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    A.noise = n;
+    const w = c.createBufferSource(); w.buffer = n; w.loop = true;
+    A.windF = c.createBiquadFilter(); A.windF.type = 'bandpass'; A.windF.frequency.value = 500; A.windF.Q.value = .7;
+    A.windG = c.createGain(); A.windG.gain.value = 0;
+    w.connect(A.windF); A.windF.connect(A.windG); A.windG.connect(A.out); w.start();
+    return c;
+  } catch (e){ A.dead = true; return null; }
+}
+function tone(o){
+  const c = ac(); if (!c || A.mute) return;
+  const t = c.currentTime + (o.at || 0), osc = c.createOscillator(), g = c.createGain();
+  osc.type = o.type || 'sine'; osc.frequency.setValueAtTime(o.f, t);
+  if (o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f2), t + o.d);
+  g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(o.v ?? .18, t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + o.d);
+  osc.connect(g); g.connect(A.out); osc.start(t); osc.stop(t + o.d + .04);
+}
+function nz(o){
+  const c = ac(); if (!c || A.mute) return;
+  const t = c.currentTime + (o.at || 0), s = c.createBufferSource(); s.buffer = A.noise;
+  const f = c.createBiquadFilter(); f.type = o.ft || 'bandpass'; f.frequency.setValueAtTime(o.f, t);
+  if (o.f2) f.frequency.exponentialRampToValueAtTime(Math.max(40, o.f2), t + o.d);
+  f.Q.value = o.q ?? 1;
+  const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(o.v ?? .2, t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + o.d);
+  s.connect(f); f.connect(g); g.connect(A.out); s.start(t, rnd(.4)); s.stop(t + o.d + .05);
+}
+const SFX = {
+  ring(n){ const f = [523, 587, 659, 784, 880, 988][Math.min(5, n)]; tone({ f, d: .2, type: 'triangle', v: .2 }); tone({ f: f * 2, d: .16, type: 'sine', v: .1, at: .05 }); },
+  perfect(){ [784, 1046, 1318].forEach((f, i) => tone({ f, d: .22, type: 'triangle', v: .18, at: i * .06 })); },
+  miss(){ tone({ f: 220, f2: 130, d: .3, type: 'sawtooth', v: .12 }); },
+  close(){ nz({ f: 2600, f2: 1400, d: .22, v: .1, q: 3 }); },
+  chute(){ nz({ f: 400, f2: 1600, d: .5, v: .3, q: .6 }); tone({ f: 120, f2: 300, d: .4, type: 'triangle', v: .14 }); },
+  land(){ nz({ f: 900, f2: 200, d: .4, v: .22, q: .5 }); tone({ f: 180, f2: 80, d: .3, v: .12 }); },
+  crash(){ nz({ f: 1800, f2: 90, d: 1.2, v: .45, q: .4, ft: 'lowpass' }); tone({ f: 150, f2: 40, d: .8, type: 'sawtooth', v: .2 }); },
+  win(){ [523, 659, 784, 1046, 1318].forEach((f, i) => tone({ f, d: .5, type: 'triangle', v: .18, at: i * .12 })); },
+};
+
+/* ---------- state ---------- */
+const S = { state: 'title', t: 0, score: 0, gates: 0, streak: 0, best: 0, perfects: 0, closest: 999, proxT: 0, callT: 0, muted: false };
+const F = { u: 0, v: 0, y: 0, spd: 16, gam: -.55, roll: 0, head: 0, mode: 'fly', chute: false, alive: true, closeT: 0, shake: 0 };
+
+/* ---------- input ---------- */
+const keys = {};
+let pullQ = false;
+addEventListener('keydown', (e) => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  keys[e.code] = true; if (e.repeat) return;
+  if (e.code === 'Enter' && (S.state === 'title' || S.state === 'over')){ begin(); return; }
+  if (e.code === 'Space') pullQ = true;
+  if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
+  if (e.code === 'KeyM'){ S.muted = !S.muted; A.mute = S.muted; if (A.out) A.out.gain.value = S.muted ? 0 : .5; }
+});
+addEventListener('keyup', (e) => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (S.state === 'fly') togglePause(); });
+const joy = { x: 0, y: 0, id: null, cx: 0, cy: 0 };
+const stick = $('stick'), nub = $('nub');
+function moveJoy(e){
+  let dx = e.clientX - joy.cx, dy = e.clientY - joy.cy; const m = Math.hypot(dx, dy);
+  if (m > 50){ dx *= 50 / m; dy *= 50 / m; }
+  joy.x = dx / 50; joy.y = -dy / 50; nub.style.transform = `translate(${dx}px,${dy}px)`;
+}
+stick.addEventListener('pointerdown', (e) => { joy.id = e.pointerId; const r = stick.getBoundingClientRect(); joy.cx = r.left + r.width / 2; joy.cy = r.top + r.height / 2; stick.setPointerCapture(e.pointerId); moveJoy(e); });
+stick.addEventListener('pointermove', (e) => { if (e.pointerId === joy.id) moveJoy(e); });
+const endJoy = (e) => { if (e.pointerId !== joy.id) return; joy.id = null; joy.x = joy.y = 0; nub.style.transform = ''; };
+stick.addEventListener('pointerup', endJoy); stick.addEventListener('pointercancel', endJoy);
+const tt = $('tTuck');
+tt.addEventListener('pointerdown', (e) => { e.preventDefault(); keys.ShiftLeft = true; tt.setPointerCapture(e.pointerId); });
+tt.addEventListener('pointerup', () => { keys.ShiftLeft = false; });
+tt.addEventListener('pointercancel', () => { keys.ShiftLeft = false; });
+$('tChute').addEventListener('pointerdown', (e) => { e.preventDefault(); pullQ = true; });
+const rollIn = () => clamp((keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0) + joy.x, -1, 1);
+const pitchIn = () => clamp((keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - joy.y, -1, 1);
+const tuckIn = () => !!(keys.ShiftLeft || keys.ShiftRight);
+
+/* ---------- HUD ---------- */
+function call(text, sub, cls){
+  const el = $('call'); el.innerHTML = text + (sub ? `<small>${sub}</small>` : '');
+  el.className = 'on ' + (cls || ''); S.callT = 1.3;
+}
+function flash(color, a){ const el = $('flash'); el.style.transition = 'none'; el.style.background = color; el.style.opacity = a;
+  requestAnimationFrame(() => requestAnimationFrame(() => { el.style.transition = ''; el.style.opacity = 0; })); }
+
+/* ---------- flight ---------- */
+function nextRing(){ return rings.find((r) => !r.done && r.u > F.u - 20); }
+function reset(){
+  Object.assign(S, { t: S.t, score: 0, gates: 0, streak: 0, perfects: 0, closest: 999, proxT: 0 });
+  Object.assign(F, { u: 0, v: 0, y: floorY(0) + 380, spd: 16, gam: -.55, roll: 0, head: 0, mode: 'fly', chute: false, alive: true, closeT: 0, shake: 0 });
+  buildRings(); canopy.visible = false;
+  updateTerrain(F.u, F.v); updatePines(F.u);
+  cam.position.set(wx(F.u, F.v), F.y + 6, wz(F.u, F.v) + 24);
+}
+function updateFlight(dt){
+  const roll = rollIn(), pitch = pitchIn(), tuck = tuckIn();
+  if (F.mode === 'fly'){
+    F.roll = lerp(F.roll, roll * 1.02, 1 - Math.exp(-4.4 * dt));
+    const gTarget = tuck ? -1.02 : pitch > .2 ? -.92 : pitch < -.2 ? .22 : -.31;
+    F.gam = lerp(F.gam, gTarget, 1 - Math.exp(-2.4 * dt));
+    const drag = tuck ? .00094 : .0013;
+    F.spd = clamp(F.spd + (-11 * Math.sin(F.gam) - drag * F.spd * F.spd) * dt, 12, 94);
+    F.head += (11 / Math.max(F.spd, 18)) * Math.tan(F.roll) * 1.7 * dt;
+  } else if (F.mode === 'canopy'){
+    F.roll = lerp(F.roll, roll * .7, 1 - Math.exp(-3 * dt));
+    F.gam = lerp(F.gam, -.24, 1 - Math.exp(-2 * dt));
+    F.spd = lerp(F.spd, 11, 1 - Math.exp(-1.6 * dt));
+    F.head += (9 / 11) * Math.tan(F.roll) * .9 * dt;
+  }
+  F.head = clamp(F.head, -1.15, 1.15);
+  const fwd = F.spd * Math.cos(F.gam);
+  F.u += fwd * Math.cos(F.head) * dt;
+  F.v = clamp(F.v + fwd * Math.sin(F.head) * dt, -460, 460);
+  F.y += F.spd * Math.sin(F.gam) * dt;
+
+  const ground = terrainY(F.u, F.v), agl = F.y - ground;
+  /* proximity pays while you are fast and close */
+  if (F.mode === 'fly' && agl < 34 && F.spd > 38){
+    const tight = 1 - agl / 34;
+    S.score += tight * tight * (F.spd * .9) * dt;
+    S.proxT += dt; S.closest = Math.min(S.closest, agl);
+    F.closeT -= dt;
+    if (agl < 14 && F.closeT <= 0){ SFX.close(); F.closeT = .5; }
+  }
+  $('prox').className = 'br' + (agl < 16 ? ' hot' : '');
+  $('proxBar').firstElementChild.style.width = `${clamp(1 - agl / 60, 0, 1) * 100}%`;
+  $('rush').style.opacity = String(clamp((F.spd - 46) / 44, 0, 1) * (reduced ? .3 : .85));
+
+  if (agl <= (F.mode === 'canopy' ? 1.6 : 2.2)){
+    F.y = ground + 1;
+    if (F.mode === 'canopy') touchdown(); else crash();
+    return;
+  }
+  /* rings */
+  for (const r of rings){
+    if (r.done || r.u > F.u || r.u < F.u - fwd * dt - 4) continue;
+    const dv = F.v - r.v, dy = F.y - r.y, d = Math.hypot(dv, dy);
+    r.done = true;
+    if (d < RAD - 1){
+      S.gates++; S.streak++;
+      const perfect = d < 2.6;
+      const pts = 500 + S.streak * 120 + (perfect ? 400 : 0);
+      S.score += pts;
+      if (perfect){ S.perfects++; SFX.perfect(); call('THREADED', `+${fmt(pts)} · STREAK ${S.streak}`, 'gold'); }
+      else { SFX.ring(S.streak); call('RING ' + S.gates, `+${fmt(pts)}`, 'good'); }
+      r.torus.material = ringDone; r.halo.material.color.set(0xffb055);
+    } else {
+      S.streak = 0; SFX.miss(); call('MISSED', 'STREAK LOST', 'bad');
+      r.torus.material = new THREE.MeshBasicMaterial({ color: 0x6b7280 });
+      r.halo.material.color.set(0x6b7280); r.halo.material.opacity = .08;
+    }
+  }
+  /* canopy */
+  const dLZ = Math.hypot(F.u - LZ_U, F.v);
+  const canPull = F.mode === 'fly' && (dLZ < 420 || F.u > LZ_U - 420);
+  $('chute').hidden = !canPull;
+  if (pullQ && canPull) pullChute();
+  pullQ = false;
+  if (F.mode === 'fly' && F.u > LZ_U + 160) { crash('You flew past the meadow'); }
+}
+function pullChute(){
+  F.mode = 'canopy'; F.chute = true; canopy.visible = true; SFX.chute();
+  call('CANOPY OUT', 'FLY IT TO THE TARGET', 'good');
+}
+function crash(reason){
+  if (S.state !== 'fly') return;
+  F.alive = false; SFX.crash(); flash('#ff5a48', .55); F.shake = 1;
+  finish('IMPACT', reason || 'You found the rock', false);
+}
+function touchdown(){
+  if (S.state !== 'fly') return;
+  const d = Math.hypot(F.u - LZ_U, F.v);
+  const bonus = Math.round(clamp(1 - d / 110, 0, 1) * 2500);
+  S.score += bonus; SFX.land(); SFX.win();
+  finish(d < 18 ? 'STOMPED IT' : 'DOWN SAFE', d < 18
+    ? `You put it on the target — ${Math.round(d)} m out, worth ${fmt(bonus)}.`
+    : `Down in one piece, ${Math.round(d)} m from the target, worth ${fmt(bonus)}.`, true, bonus);
+}
+function finish(tag, text, landed, bonus){
+  S.state = 'over';
+  let best = 0; try { best = parseInt(localStorage.getItem('granite-best')) || 0; } catch (e){}
+  const total = Math.round(S.score);
+  if (total > best){ best = total; try { localStorage.setItem('granite-best', String(best)); } catch (e){} }
+  $('overTag').textContent = 'FLIGHT LOG · ' + tag;
+  $('overTitle').textContent = landed ? tag.toLowerCase() === 'stomped it' ? 'Stomped it' : 'Down safe' : 'Impact';
+  $('overText').textContent = text;
+  $('tally').innerHTML = [
+    ['SCORE', fmt(total), 1], ['RINGS', `${S.gates}/${RINGS}`, 0], ['THREADED', S.perfects, 0],
+    ['CLOSEST', S.closest < 999 ? `${S.closest.toFixed(1)} M` : '—', 0],
+    ['PROXIMITY', `${S.proxT.toFixed(1)} S`, 0], ['LANDING', bonus ? fmt(bonus) : '—', 0], ['BEST', fmt(best), 1],
+  ].map(([k, v, hi]) => `<div><dt>${k}</dt><dd class="${hi ? 'hi' : ''}">${v}</dd></div>`).join('');
+  $('hud').hidden = true; $('chute').hidden = true; $('over').hidden = false; $('again').focus();
+}
+
+/* ---------- camera, flyer pose, HUD ---------- */
+const camLook = new THREE.Vector3();
+function updateCamera(dt){
+  const px = wx(F.u, F.v), pz = wz(F.u, F.v);
+  const hx = Math.sin(F.head), hz = -Math.cos(F.head);                 /* heading in world xz */
+  const back = F.mode === 'canopy' ? 17 : 12 + clamp(F.spd * .07, 0, 5);
+  const want = new THREE.Vector3(px - hx * back, F.y - Math.sin(F.gam) * back * .8 + 4.4, pz - hz * back);
+  const k = 1 - Math.exp(-(S.state === 'title' ? 1.6 : 6.5) * dt);
+  cam.position.lerp(want, k);
+  camLook.lerp(new THREE.Vector3(px + hx * 26, F.y + Math.sin(F.gam) * 20, pz + hz * 26), k);
+  cam.up.set(Math.sin(-F.roll * .5), Math.cos(F.roll * .5), 0);
+  cam.lookAt(camLook);
+  if (F.shake > 0 && !reduced){ cam.position.x += rnd(-1, 1) * F.shake * 2; cam.position.y += rnd(-1, 1) * F.shake * 2; F.shake = Math.max(0, F.shake - dt * 1.6); }
+  const fov = 58 + clamp((F.spd - 30) * .3, 0, 18);
+  if (Math.abs(cam.fov - fov) > .1){ cam.fov = lerp(cam.fov, fov, k); cam.updateProjectionMatrix(); }
+  sky.position.copy(cam.position);
+  sun.position.set(cam.position.x - 300, cam.position.y + 500, cam.position.z - 800);
+}
+function updateFlyer(){
+  flyer.position.set(wx(F.u, F.v), F.y, wz(F.u, F.v));
+  flyer.rotation.set(0, F.head, 0);
+  flyerRoll.rotation.set(F.gam + (F.mode === 'canopy' ? .25 : 0), 0, -F.roll * .85);
+  canopy.rotation.set(-F.gam * .5, 0, -F.roll * .4);
+}
+function updateStreaks(dt){
+  const on = F.spd > 44 && S.state === 'fly';
+  streaks.visible = on;
+  if (!on) return;
+  const hx = Math.sin(F.head), hz = -Math.cos(F.head);
+  for (let i = 0; i < SN; i++){
+    sAge[i] -= dt;
+    if (sAge[i] <= 0){
+      const a = rnd(TAU), r = rnd(4, 46);
+      const x = wx(F.u, F.v) + Math.cos(a) * r + hx * rnd(20, 90);
+      const y = F.y + Math.sin(a) * r * .7;
+      const z = wz(F.u, F.v) + Math.sin(a) * r * .3 + hz * rnd(20, 90);
+      const len = 3 + F.spd * .14;
+      sPos[i * 6] = x; sPos[i * 6 + 1] = y; sPos[i * 6 + 2] = z;
+      sPos[i * 6 + 3] = x - hx * len; sPos[i * 6 + 4] = y; sPos[i * 6 + 5] = z - hz * len;
+      sAge[i] = rnd(.15, .5);
+    }
+  }
+  sGeo.attributes.position.needsUpdate = true;
+  streaks.material.opacity = clamp((F.spd - 44) / 40, 0, 1) * .55;
+}
+function updateHUD(){
+  const agl = F.y - terrainY(F.u, F.v);
+  $('vAlt').innerHTML = `${Math.max(0, Math.round(agl))}<small>M</small>`;
+  $('vSpd').innerHTML = `${Math.round(F.spd * 3.6)}<small>KM/H</small>`;
+  $('vGates').innerHTML = `${S.gates}<small>/${RINGS}</small>`;
+  $('vScore').textContent = fmt(S.score);
+  $('streak').textContent = S.streak > 1 ? `STREAK ${S.streak}` : '';
+  const r = nextRing();
+  if (r){
+    const dv = r.v - F.v, dy = r.y - F.y, du = Math.max(r.u - F.u, 1);
+    $('bArrow').setAttribute('transform', `rotate(${(Math.atan2(dv, -dy) * 180 / PI).toFixed(1)})`);
+    $('bDist').textContent = `RING ${r.i + 1} · ${Math.round(du)} M`;
+  } else {
+    $('bArrow').setAttribute('transform', 'rotate(0)');
+    $('bDist').textContent = `MEADOW · ${Math.max(0, Math.round(LZ_U - F.u))} M`;
+  }
+}
+
+/* ---------- flow ---------- */
+function begin(){
+  ac(); if (A.ctx && A.ctx.state === 'suspended') A.ctx.resume();
+  reset(); S.state = 'fly';
+  $('title').hidden = true; $('over').hidden = true; $('pause').hidden = true; $('hud').hidden = false;
+  if (isTouch) document.body.classList.add('touch');
+  call('EXIT', 'DIVE TO BUILD SPEED', 'good');
+}
+function togglePause(){
+  if (S.state === 'fly'){ S.state = 'paused'; $('pause').hidden = false; A.ctx?.suspend(); $('resume').focus(); }
+  else if (S.state === 'paused'){ S.state = 'fly'; $('pause').hidden = true; A.ctx?.resume(); }
+}
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(.04, (now - last) / 1000); last = now;
+  if (S.state === 'paused'){ renderer.render(scene, cam); return; }
+  S.t += dt;
+  if (S.state === 'fly') updateFlight(dt);
+  else if (S.state === 'title'){                                   /* attract: a slow pass down the valley */
+    F.u += 42 * dt; F.head = Math.sin(S.t * .18) * .22; F.roll = Math.sin(S.t * .18 + 1) * .3;
+    F.v = clamp(F.v + Math.sin(S.t * .18) * 20 * dt, -60, 60);
+    F.y = terrainY(F.u, F.v) + 95 + Math.sin(S.t * .3) * 12;
+    if (F.u > COURSE - 200){ F.u = 0; F.v = 0; }
+  } else if (S.state === 'over' && !F.alive){ F.y = Math.max(terrainY(F.u, F.v) + 1, F.y - 4 * dt); }
+  updateTerrain(F.u, F.v);
+  updatePines(F.u);
+  updateFlyer();
+  updateStreaks(dt);
+  updateCamera(dt);
+  for (const r of rings){
+    const near = Math.abs(r.u - F.u) < 700;
+    r.mesh.visible = near;
+    if (near && !r.done) r.halo.material.opacity = .14 + Math.sin(S.t * 3 + r.u) * .06;
+    if (near) r.mesh.lookAt(cam.position.x, r.mesh.position.y, cam.position.z + 1);
+  }
+  if (A.ctx && A.windG){
+    const w = clamp((F.spd - 12) / 70, 0, 1);
+    A.windG.gain.value = A.mute ? 0 : (S.state === 'fly' ? .04 + w * .3 : .05);
+    A.windF.frequency.value = 320 + w * 1500;
+  }
+  if (S.state === 'fly') updateHUD();
+  if (S.callT > 0){ S.callT -= dt; if (S.callT <= 0) $('call').className = ''; }
+  renderer.render(scene, cam);
+}
+async function init(){
+  try { await Promise.race([document.fonts.load('40px "Anton"'), new Promise((r) => setTimeout(r, 1500))]); } catch (e){}
+  resize(); reset(); S.state = 'title';
+  let best = 0; try { best = parseInt(localStorage.getItem('granite-best')) || 0; } catch (e){}
+  $('best').textContent = best ? `BEST ${fmt(best)}` : 'NO FLIGHTS LOGGED';
+  requestAnimationFrame(frame);
+}
+$('start').addEventListener('click', begin);
+$('again').addEventListener('click', begin);
+$('resume').addEventListener('click', togglePause);
+$('quit').addEventListener('click', () => { $('pause').hidden = true; finish('SCRUBBED', 'You called it off and landed on the shoulder.', false); });
+init();
+</script>
