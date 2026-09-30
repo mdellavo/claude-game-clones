@@ -14,6 +14,9 @@ Each game was written from a single prompt, quoted word for word in the README's
 <game>/index.html     the game (most are one self-contained file)
 screenshots/          <game>-1.jpg, -2.jpg, -3.jpg — used by the README table
 README.md             one table row per game: name, description, prompt, play link, screenshots
+index.html            launcher page for GitHub Pages; builds its tiles from the README table at runtime
+tools/build-site.mjs  assembles _site/ (launcher + every game, Vite games built) for Pages
+.github/workflows/    pages.yml runs the build and deploys _site/ on push to main
 ```
 
 Five games are not single files:
@@ -97,6 +100,10 @@ Each game is published at its own claude.ai URL, linked from the README's Play c
   owner. A pinned older version means viewers do not see new publishes.
 
 ## Adding a game to the README
+
+The launcher parses these rows, so keep the cell layout exactly as below: the name in `**…**`
+followed by `<br>` and the folder in backticks, and the screenshots as `<img src="…">` tags.
+A new top-level folder with an `index.html` is picked up by `tools/build-site.mjs` automatically.
 
 Add one row, in alphabetical order by display name, with all five columns filled in:
 name and folder, description, the prompt quoted word for word in `<i>"…"</i>` (typos included,

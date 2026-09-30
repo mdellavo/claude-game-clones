@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Clones</title>
+<meta name="description" content="Browser games remade by Claude Code, one prompt each. Pick a tile to play.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#14111f; --panel:#1d1a2c; --panel2:#242037; --line:#322d4a; --cream:#f1e9d8; --dim:#a29cb8; --coral:#ff6a4d; --gold:#ffc24b;
+  --disp:"Bungee","Impact",sans-serif; --body:"Barlow","Helvetica Neue",Arial,sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;min-height:100vh;background:
+  radial-gradient(1200px 500px at 50% -120px,rgba(255,106,77,.16),transparent 70%),
+  repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px),
+  var(--bg);
+  color:var(--cream);font-family:var(--body);font-size:16px;line-height:1.45;
+  padding:calc(env(safe-area-inset-top,0px) + 40px) 16px calc(env(safe-area-inset-bottom,0px) + 48px)}
+.wrap{max-width:1320px;margin:0 auto}
+
+/* ---------- marquee ---------- */
+header{display:grid;gap:14px;margin-bottom:34px}
+.kicker{font-family:var(--mono);font-size:13px;color:var(--gold);letter-spacing:.08em;text-transform:uppercase}
+h1{font-family:var(--disp);font-weight:400;font-size:clamp(64px,13vw,150px);line-height:.86;margin:0;letter-spacing:.01em;
+  background:linear-gradient(180deg,var(--cream) 0 52%,var(--gold) 52% 70%,var(--coral) 70%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 6px 0 rgba(0,0,0,.35));text-wrap:balance}
+.lede{margin:0;max-width:62ch;font-size:18px;color:var(--cream)}
+.lede b{color:var(--gold);font-weight:600}
+.bar{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;font-family:var(--mono);font-size:13px;color:var(--dim)}
+.bar .coin{color:var(--coral);animation:blink 1.1s steps(2) infinite}
+@keyframes blink{50%{opacity:.25}}
+.bar a{color:var(--cream)}
+
+/* ---------- grid ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:22px}
+.tile{position:relative;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;transition:transform .18s,border-color .18s,box-shadow .18s}
+.tile:hover,.tile:focus-within{transform:translateY(-3px);border-color:var(--gold);box-shadow:0 14px 30px rgba(0,0,0,.45),0 0 0 1px var(--gold)}
+.shot{position:relative;aspect-ratio:16/9;max-width:100%;overflow:hidden;background:#0c0a14}
+.shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .45s}
+.shot img.on{opacity:1}
+.shot::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(20,17,31,.75));pointer-events:none}
+.dots{position:absolute;left:10px;bottom:9px;display:flex;gap:5px;z-index:1}
+.dots i{width:16px;height:3px;background:rgba(241,233,216,.35)}
+.dots i.on{background:var(--gold)}
+.badge{position:absolute;right:10px;bottom:8px;z-index:1;font-family:var(--disp);font-size:14px;color:#1a1204;background:var(--gold);padding:4px 10px 3px;
+  opacity:0;transform:translateY(6px);transition:opacity .18s,transform .18s}
+.tile:hover .badge,.tile:focus-within .badge{opacity:1;transform:none}
+.body{padding:14px 16px 16px;display:flex;flex-direction:column;gap:8px;flex:1}
+h2{margin:0;font-family:var(--disp);font-weight:400;font-size:21px;line-height:1.1;letter-spacing:.01em}
+h2 a{color:inherit;text-decoration:none}
+h2 a::after{content:"";position:absolute;inset:0;z-index:1}
+h2 a:focus-visible{outline:none}
+.tile:has(h2 a:focus-visible){outline:3px solid var(--coral);outline-offset:3px}
+.desc{margin:0;color:var(--cream);opacity:.88;font-size:15px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.desc em{color:var(--gold);font-style:normal}
+.prompt{margin:0;font-family:var(--mono);font-size:12px;line-height:1.5;color:var(--dim);border-left:2px solid var(--coral);padding-left:9px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.meta{margin-top:auto;padding-top:6px;display:flex;justify-content:space-between;gap:10px;align-items:center;font-family:var(--mono);font-size:12px;color:var(--dim)}
+.meta a{position:relative;z-index:2;color:var(--dim);text-decoration:none;border-bottom:1px solid var(--line)}
+.meta a:hover,.meta a:focus-visible{color:var(--gold);border-color:var(--gold);outline:none}
+.note{font-family:var(--mono);font-size:14px;color:var(--dim);border:1px dashed var(--line);padding:18px}
+footer{margin-top:44px;font-family:var(--mono);font-size:12px;color:var(--dim);display:flex;flex-wrap:wrap;gap:8px 20px}
+footer a{color:var(--cream)}
+@media (prefers-reduced-motion:reduce){.shot img{transition:none}.bar .coin{animation:none}.tile{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker">Select game</div>
+    <h1>CLONES</h1>
+    <p class="lede">Browser games, mostly remakes of classics, each built by Claude Code from <b>a single prompt</b>. Every one plays on a phone too. <span id="how">Hover a tile to flip through it, click to play.</span></p>
+    <div class="bar"><span class="coin">● Insert coin</span><span id="count">Loading the shelf…</span><a href="https://github.com/mdellavo/claude-game-clones">Source on GitHub</a></div>
+  </header>
+  <main class="grid" id="grid" aria-live="polite"></main>
+  <footer><span>Games are listed from the repo README, in the same order.</span><span>Screenshots cycle on hover, or on their own on a touch screen.</span></footer>
+</div>
+
+<template id="tileT">
+  <article class="tile">
+    <div class="shot"><div class="dots"></div><span class="badge">PLAY ▸</span></div>
+    <div class="body">
+      <h2><a class="play"></a></h2>
+      <p class="desc"></p>
+      <p class="prompt"></p>
+      <div class="meta"><span class="dir"></span><a class="alt" target="_blank" rel="noopener">claude.ai ↗</a></div>
+    </div>
+  </article>
+</template>
+
+<script>
+const grid = document.getElementById('grid');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const touch = matchMedia('(hover: none)').matches;
+if (touch) document.getElementById('how').textContent = 'Tap a tile to play.';
+
+function esc(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+function inline(md) { return esc(md).replace(/\*([^*]+)\*/g, '<em>$1</em>'); }
+function text(html) { const d = document.createElement('div'); d.innerHTML = html; return d.textContent; }
+
+// Each README table row is one game: | **Name**<br>`dir/` | description | <i>"prompt"</i> | [claude.ai](url) | <img ...> x3 |
+function parse(md) {
+  return md.split('\n').filter(l => l.startsWith('| **')).map(l => {
+    const cells = l.split(' | ');
+    const name = (cells[0].match(/\*\*(.+?)\*\*/) || [])[1];
+    const dir = (cells[0].match(/`([^`]+)`/) || [])[1];
+    const prompt = (cells[2] || '').match(/<i>"?(.*?)"?<\/i>/);
+    const link = (l.match(/\]\((https:\/\/claude\.ai[^)]+)\)/) || [])[1];
+    const shots = [...l.matchAll(/<img src="([^"]+)"/g)].map(m => m[1]);
+    return name && dir ? { name, dir, desc: cells[1] || '', prompt: prompt ? text(prompt[1]) : '', link, shots } : null;
+  }).filter(Boolean);
+}
+
+function build(games) {
+  const t = document.getElementById('tileT');
+  grid.innerHTML = '';
+  for (const g of games) {
+    const el = t.content.firstElementChild.cloneNode(true);
+    const a = el.querySelector('.play'); a.href = g.dir; a.textContent = g.name;
+    el.querySelector('.desc').innerHTML = inline(g.desc);
+    const p = el.querySelector('.prompt');
+    if (g.prompt) p.textContent = `“${g.prompt}”`; else p.remove();
+    el.querySelector('.dir').textContent = g.dir;
+    const alt = el.querySelector('.alt'); if (g.link) { alt.href = g.link; alt.setAttribute('aria-label', `${g.name} on claude.ai`); } else alt.remove();
+    const shot = el.querySelector('.shot'), dots = el.querySelector('.dots');
+    g.shots.forEach((src, i) => {
+      const img = document.createElement('img');
+      img.alt = i === 0 ? `${g.name} screenshot` : ''; img.decoding = 'async';
+      if (i === 0) { img.src = src; img.loading = 'lazy'; img.className = 'on'; } else img.dataset.src = src;
+      shot.insertBefore(img, dots);
+      const d = document.createElement('i'); if (i === 0) d.className = 'on'; dots.appendChild(d);
+    });
+    if (g.shots.length < 2) dots.remove();
+    grid.appendChild(el);
+    wire(el);
+  }
+  document.getElementById('count').textContent = `${games.length} games on the shelf`;
+}
+
+// ----- screenshot cycling
+function wire(el) {
+  const imgs = [...el.querySelectorAll('.shot img')], dots = [...el.querySelectorAll('.dots i')];
+  if (imgs.length < 2) return;
+  let i = 0, timer = null;
+  const show = n => {
+    i = n % imgs.length;
+    const img = imgs[i]; if (img.dataset.src) { img.src = img.dataset.src; delete img.dataset.src; }
+    imgs.forEach((m, k) => m.classList.toggle('on', k === i));
+    dots.forEach((d, k) => d.classList.toggle('on', k === i));
+  };
+  const preload = () => imgs.forEach(m => { if (m.dataset.src) { m.src = m.dataset.src; delete m.dataset.src; } });
+  const start = (delay) => { if (timer) return; preload(); timer = setInterval(() => show(i + 1), delay); if (!touch) show(1); };
+  const stop = () => { clearInterval(timer); timer = null; show(0); };
+  el._start = start; el._stop = stop;
+  if (!touch) {
+    el.addEventListener('mouseenter', () => start(1100));
+    el.addEventListener('mouseleave', stop);
+    el.addEventListener('focusin', () => start(1100));
+    el.addEventListener('focusout', e => { if (!el.contains(e.relatedTarget)) stop(); });
+  }
+}
+// On touch screens there is no hover, so tiles that are mostly on screen cycle by themselves.
+if (touch && !reduce && 'IntersectionObserver' in window) {
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) setTimeout(() => e.target._start && e.target._start(2200), Math.random() * 900);
+    else e.target._stop && e.target._stop();
+  }), { threshold: 0.65 });
+  new MutationObserver(() => grid.querySelectorAll('.tile').forEach(t => io.observe(t))).observe(grid, { childList: true });
+}
+
+fetch('README.md', { cache: 'no-cache' })
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+  .then(md => { const games = parse(md); if (!games.length) throw new Error('no rows'); build(games); })
+  .catch(() => {
+    grid.innerHTML = '<p class="note">The game list is read from README.md, which the browser could not load. Serve this folder over HTTP (for example <code>python3 -m http.server</code>) instead of opening the file directly.</p>';
+    document.getElementById('count').textContent = 'Shelf unavailable';
+  });
+</script>
+</body>
+</html>

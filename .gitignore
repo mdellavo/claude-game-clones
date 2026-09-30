@@ -13,3 +13,6 @@ npm-debug.log*
 .idea/
 .vscode/
 *.swp
+
+# GitHub Pages build output
+_site/

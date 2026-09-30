@@ -34,6 +34,14 @@ cd <game> && python3 -m http.server 8080
 
 `xcom/` and `zelda/` use Vite. Run `npm install && npm run dev` in those folders.
 
+The repo root holds a launcher page, `index.html`, that shows every game in this README as a tile. It reads its list from the table above, so adding a row adds a tile. To build the whole site the way GitHub Pages serves it, with the Vite games built and three.js bundled for the games that load it from `node_modules`:
+
+```sh
+node tools/build-site.mjs && python3 -m http.server 8080 -d _site
+```
+
+`.github/workflows/pages.yml` runs the same build and deploys `_site/` to GitHub Pages on every push to `main`.
+
 ## On a phone
 
 Every game detects a touch screen and shows controls to match: a thumbstick and action buttons for the 3D games, a D-pad and A/B buttons for the NES-style ones, and a camera pad for X-COM's battlescape. The published claude.ai versions are the easiest way to play on a phone. To play a local copy, serve it as above and open the address on your phone over the same network.
@@ -44,6 +52,5 @@ Every game detects a touch screen and shows controls to match: a thumbstick and 
 - turn based arcade shooter ala cod
 - marble madness
 - hackeysack game
-- launcher screen
 - 2.5 dog fight game
 - isometric contra shooter 
