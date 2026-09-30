@@ -6,7 +6,7 @@ Notes for agents working in this repo. Humans are welcome to read it too.
 
 A collection of browser games, one per subdirectory, each a remake of or homage to an older
 game. Every game is also published as an artifact on claude.ai, and `README.md` links to it.
-Each game was written from a single prompt, quoted word for word in the README's Prompt column.
+Each game was written from a single prompt, quoted in the README's Prompt column.
 
 ## Layout
 
@@ -106,7 +106,9 @@ followed by `<br>` and the folder in backticks, and the screenshots as `<img src
 A new top-level folder with an `index.html` is picked up by `tools/build-site.mjs` automatically.
 
 Add one row, in alphabetical order by display name, with all five columns filled in:
-name and folder, description, the prompt quoted word for word in `<i>"…"</i>` (typos included,
+name and folder, description, the prompt quoted in `<i>"…"</i>` with only the description of the game kept: drop setup boilerplate
+such as "create a new subdirectory", "webgl game", "update the readme" or "publish and push", but keep
+the user's own words otherwise (typos included,
 follow-ups after `<br><br>Follow-ups:`), the claude.ai link, and three screenshots at
 `width="200"`. Save screenshots as `screenshots/<game>-1.jpg` through `-3.jpg`, around
 1280×720, JPEG quality 85.
