@@ -111,18 +111,18 @@ body.touch #prompt kbd{display:none}
   <div class="chip" id="carry"><span id="carryE">✋</span><span id="carryN">Empty hands</span></div>
   <div id="prompt" hidden></div>
 </div>
-<div id="kbanner" hidden><b>BISCUIT GOT BORED</b><span id="kdmg">$0 in damages</span></div>
+<div id="kbanner" hidden><b>PHOENIX GOT BORED</b><span id="kdmg">$0 in damages</span></div>
 <div id="touch" hidden><div id="stick"><i></i></div><button id="bRun" type="button">RUN</button><button id="bAct" type="button">GRAB</button></div>
 
 <div class="screen" id="title">
   <div class="card">
     <div class="eyebrow">AN AFTERNOON IN WHISKERTON</div>
     <h1>Purr<br>Patrol</h1>
-    <p>You're cat-sitting <b>Biscuit</b> until the owners get home at 6. Run around the house, find what Biscuit wants and bring it over. Whatever you do, <b>don't let Biscuit get bored.</b></p>
+    <p>You're cat-sitting <b>Phoenix</b> until the owners get home at 6. Run around the house, find what Phoenix wants and bring it over. Whatever you do, <b>don't let Phoenix get bored.</b></p>
     <div class="keys" id="keysDesk">
       <kbd>WASD / Arrows</kbd><span>Run around the house</span>
       <kbd>Shift</kbd><span>Sprint</span>
-      <kbd>E / Space</kbd><span>Grab a toy, give it, or pet Biscuit</span>
+      <kbd>E / Space</kbd><span>Grab a toy, give it, or pet Phoenix</span>
       <kbd>P · M</kbd><span>Pause · Mute</span>
     </div>
     <p class="small" id="keysTouch" hidden>Stick to run, the orange button to grab, give and pet.</p>
@@ -134,16 +134,16 @@ body.touch #prompt kbd{display:none}
   <div class="card">
     <div class="eyebrow" id="deEye">6:00 PM · DAY 1</div>
     <h2>The owners are home!</h2>
-    <p>Biscuit is purring on the windowsill and Whiskerton is still standing.</p>
+    <p>Phoenix is purring on the windowsill and Whiskerton is still standing.</p>
     <div class="stats"><span>Toys delivered</span><b id="deToys">0</b><span>Exact wishes granted</span><b id="deWish">0</b><span>Closest call</span><b id="deClose">0%</b></div>
-    <p class="small">Tomorrow Biscuit gets bored faster.</p>
+    <p class="small">Tomorrow Phoenix gets bored faster.</p>
     <button class="btn" id="nextBtn" type="button">Next day</button>
   </div>
 </div>
 <div class="screen" id="over" hidden>
   <div class="card">
     <div class="eyebrow" id="ovEye">3:12 PM · DAY 1</div>
-    <h2>Biscuit got bored.</h2>
+    <h2>Phoenix got bored.</h2>
     <p id="ovText">Whiskerton is in ruins.</p>
     <div class="stats"><span>Damage to Whiskerton</span><b id="ovDmg">$0</b><span>Buildings flattened</span><b id="ovBld">0</b><span>Toys delivered</span><b id="ovToys">0</b></div>
     <button class="btn" id="retryBtn" type="button">Try the day again</button>
@@ -151,7 +151,7 @@ body.touch #prompt kbd{display:none}
   </div>
 </div>
 <div class="screen" id="pause" hidden>
-  <div class="card"><h2>Paused</h2><p>Biscuit is watching you. Waiting.</p><button class="btn" id="resumeBtn" type="button">Resume</button></div>
+  <div class="card"><h2>Paused</h2><p>Phoenix is watching you. Waiting.</p><button class="btn" id="resumeBtn" type="button">Resume</button></div>
 </div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
@@ -402,7 +402,7 @@ function sfx(name, v = 1) {
     case 'step': noise(t, .05, filt('bandpass', 900, 2, envG(M, t, .002, .04 * v, .05))); break;
   }
 }
-// little looping tune; goes minor and quicker as Biscuit gets bored
+// little looping tune; goes minor and quicker as Phoenix gets bored
 const MUS = { on: false, next: 0, step: 0, tense: 0 };
 function startMusic() {
   if (MUS.timer) return;
@@ -565,7 +565,7 @@ function buildHouse() {
   rug(0, 0, 13, 1.1, 'runner');
   boxB(H, .6, .5, 1.0, 0x7a5235, 9.55, 0, 0); for (let i = 0; i < 3; i++) boxB(H, .3, .12, .18, pick([0x30343c, 0xd9485a, 0x3d8fe0]), 9.5, .5, -.3 + i * .3); solid(9.55, 0, .6, 1.0);
   plant(-9.5, 0); solid(-9.5, 0, .6, .6);
-  // floors count as house too but stay put when Biscuit pops
+  // floors count as house too but stay put when Phoenix pops
 }
 
 /* ================= TOWN ================= */
@@ -785,10 +785,10 @@ function moveInput() {
 const nearCat = () => Math.hypot(cat.x - player.x, cat.z - player.z) < 1.8 && cat.state !== 'zoom';
 function nearestItem() { let best = null, bd = 1.35; for (const it of items) { const d = Math.hypot(it.x - player.x, it.z - player.z); if (d < bd) { bd = d; best = it; } } return best; }
 function context() {
-  if (nearCat() && player.carry) return { act: 'give', label: `Give ${TOYS[player.carry].e} to Biscuit`, btn: 'GIVE' };
+  if (nearCat() && player.carry) return { act: 'give', label: `Give ${TOYS[player.carry].e} to Phoenix`, btn: 'GIVE' };
   const it = nearestItem();
   if (it) return { act: 'grab', it, label: player.carry ? `Swap for ${TOYS[it.type].e} ${TOYS[it.type].name}` : `Grab ${TOYS[it.type].e} ${TOYS[it.type].name}`, btn: player.carry ? 'SWAP' : 'GRAB' };
-  if (nearCat() && (cat.state !== 'play' || cat.want === 'pet')) return { act: 'pet', label: cat.want === 'pet' ? 'Give Biscuit head scratches' : 'Pet Biscuit', btn: 'PET' };
+  if (nearCat() && (cat.state !== 'play' || cat.want === 'pet')) return { act: 'pet', label: cat.want === 'pet' ? 'Give Phoenix head scratches' : 'Pet Phoenix', btn: 'PET' };
   return null;
 }
 function interact() {
@@ -803,16 +803,16 @@ function interact() {
 function give() {
   const t = player.carry; setCarry(null); run.toys++;
   let amt;
-  if (t === cat.want) { amt = Math.max(24, 36 - 3 * (run.day - 1)); run.wishes++; toast('Purrfect! Exactly what Biscuit wanted.', 'good'); floatAt(cat.x, .9, cat.z, '😻'); sfx('give'); setTimeout(() => sfx('purr'), 250); }
-  else if (t === cat.lastToy) { amt = 5; toast('Biscuit already played with that.', 'bad'); floatAt(cat.x, .9, cat.z, '😒'); sfx('meh'); }
-  else { amt = 15; toast(`Not ${TOYS[cat.want].e}, but Biscuit will take it.`); floatAt(cat.x, .9, cat.z, '😼'); sfx('grab'); }
+  if (t === cat.want) { amt = Math.max(24, 36 - 3 * (run.day - 1)); run.wishes++; toast('Purrfect! Exactly what Phoenix wanted.', 'good'); floatAt(cat.x, .9, cat.z, '😻'); sfx('give'); setTimeout(() => sfx('purr'), 250); }
+  else if (t === cat.lastToy) { amt = 5; toast('Phoenix already played with that.', 'bad'); floatAt(cat.x, .9, cat.z, '😒'); sfx('meh'); }
+  else { amt = 15; toast(`Not ${TOYS[cat.want].e}, but Phoenix will take it.`); floatAt(cat.x, .9, cat.z, '😼'); sfx('grab'); }
   cat.boredom = Math.max(0, cat.boredom - amt); cat.lastToy = t;
   startPlay(t);
   if (t === cat.want) cat.wantAfterPlay = true; else if (cat.wantT > 14) cat.wantAfterPlay = true;
 }
 function pet() {
-  if (cat.want === 'pet') { cat.boredom = Math.max(0, cat.boredom - 32); run.wishes++; run.toys++; toast('Head scratches! Biscuit melts.', 'good'); for (let i = 0; i < 3; i++) setTimeout(() => floatAt(cat.x + rand(-.3, .3), .9, cat.z, '💕'), i * 180); sfx('purr'); startPlay('pet'); cat.wantAfterPlay = true; cat.petCD = 6; return; }
-  if (cat.petCD > 0) { cat.boredom = Math.min(100, cat.boredom + 5); toast('Biscuit swats your hand away!', 'bad'); floatAt(cat.x, .9, cat.z, '💢'); sfx('hiss'); cat.petCD = 4; cat.swat = .4; return; }
+  if (cat.want === 'pet') { cat.boredom = Math.max(0, cat.boredom - 32); run.wishes++; run.toys++; toast('Head scratches! Phoenix melts.', 'good'); for (let i = 0; i < 3; i++) setTimeout(() => floatAt(cat.x + rand(-.3, .3), .9, cat.z, '💕'), i * 180); sfx('purr'); startPlay('pet'); cat.wantAfterPlay = true; cat.petCD = 6; return; }
+  if (cat.petCD > 0) { cat.boredom = Math.min(100, cat.boredom + 5); toast('Phoenix swats your hand away!', 'bad'); floatAt(cat.x, .9, cat.z, '💢'); sfx('hiss'); cat.petCD = 4; cat.swat = .4; return; }
   cat.boredom = Math.max(0, cat.boredom - 6); floatAt(cat.x, .9, cat.z, '💕'); sfx('purr', .7); cat.petCD = 6;
 }
 
@@ -844,13 +844,13 @@ function updateCat(dt, live) {
       const rate = (1.2 + 1.0 * frac) * dayMul * (cat.state === 'zoom' ? .5 : 1);
       cat.boredom = Math.min(100, cat.boredom + rate * dt);
       cat.wantT += dt;
-      if (cat.wantT > 32) { newWant(); toast('Biscuit changed its mind.'); sfx('meowSad'); }
+      if (cat.wantT > 32) { newWant(); toast('Phoenix changed its mind.'); sfx('meowSad'); }
     }
     run.peak = Math.max(run.peak, cat.boredom);
     cat.meowT -= dt;
     if (cat.meowT <= 0) { cat.meowT = cat.boredom > 75 ? rand(3, 5) : rand(9, 16); sfx(cat.boredom > 75 ? 'meowMad' : cat.boredom > 45 ? 'meowSad' : 'meow', .8); }
-    if (cat.boredom >= 75 && run.warned < 1) { run.warned = 1; toast('Biscuit is getting dangerously bored!', 'bad'); sfx('warn'); }
-    if (cat.boredom >= 90 && run.warned < 2) { run.warned = 2; toast('Something is happening to Biscuit…', 'bad'); sfx('growl'); }
+    if (cat.boredom >= 75 && run.warned < 1) { run.warned = 1; toast('Phoenix is getting dangerously bored!', 'bad'); sfx('warn'); }
+    if (cat.boredom >= 90 && run.warned < 2) { run.warned = 2; toast('Something is happening to Phoenix…', 'bad'); sfx('growl'); }
     if (cat.boredom < 60) run.warned = 0;
     if (cat.boredom >= 100) { startKaiju(); return; }
   }
@@ -860,7 +860,7 @@ function updateCat(dt, live) {
       cat.t = 0; cat.idleDur = rand(6, 14);
       if (live && cat.boredom > 35 && cat.boredom < 80 && Math.random() < .3) {
         const seq = NODES.map((n, i) => i).filter(i => NODES[i].rest && i !== cat.node);
-        if (catGoTo(pick(seq), true)) { if (live) toast('Biscuit has the zoomies!'); return; }
+        if (catGoTo(pick(seq), true)) { if (live) toast('Phoenix has the zoomies!'); return; }
       }
       const rests = NODES.map((n, i) => i).filter(i => NODES[i].rest && i !== cat.node);
       catGoTo(pick(rests));
@@ -1049,7 +1049,7 @@ function startGame() {
   audioInit(); $('title').hidden = true; $('over').hidden = true; $('dayend').hidden = true;
   if (K.on || K.flyers) { K.flyers = null; resetWorld(); } else resetDay();
   state = 'play'; MUS.on = true; $('hud').hidden = false; $('touch').hidden = !isTouch; $('kbanner').hidden = true;
-  toast(`Day ${run.day}. Biscuit wants ${TOYS[cat.want].e} ${TOYS[cat.want].name}!`);
+  toast(`Day ${run.day}. Phoenix wants ${TOYS[cat.want].e} ${TOYS[cat.want].name}!`);
   sfx('meow');
 }
 function dayComplete() {
@@ -1110,14 +1110,14 @@ function updateHUD(dt) {
   const c = state === 'play' ? context() : null, pr = $('prompt');
   if (c) { const html = (isTouch ? '' : '<kbd>E</kbd>') + c.label; if (hudCache.prompt !== html) { hudCache.prompt = html; pr.innerHTML = html; } pr.hidden = false; } else pr.hidden = true;
   const btn = c ? c.btn : 'GRAB'; if (hudCache.btn !== btn) { hudCache.btn = btn; $('bAct').textContent = btn; $('bAct').style.opacity = c ? 1 : .55; }
-  // want bubble over Biscuit
+  // want bubble over Phoenix
   const [sx, sy, vis] = toScreen(cat.x, .9 * cat.scale * CAT_VIS + .1, cat.z), bub = $('bubble');
   const playing = cat.state === 'play';
   setText('bubE', playing ? (cat.play.type === 'pet' ? '😽' : '😸') : TOYS[cat.want].e);
   bub.classList.toggle('mad', b > 75 && !playing);
   const on = vis && sx > -40 && sx < innerWidth + 40 && sy > -40 && sy < innerHeight + 40;
   bub.style.display = on ? '' : 'none'; bub.style.transform = `translate(${(sx - 23) | 0}px,${(sy - 58) | 0}px)`;
-  // edge arrow when Biscuit is off screen
+  // edge arrow when Phoenix is off screen
   const ar = $('arrow'), m = 46;
   if (!on || sx < m || sx > innerWidth - m || sy < 120 || sy > innerHeight - m) {
     const cx = innerWidth / 2, cy = innerHeight / 2; let dx = sx - cx, dy = sy - cy; if (!vis) { dx = -dx; dy = -dy; }
