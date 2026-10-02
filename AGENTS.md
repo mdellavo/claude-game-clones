@@ -14,7 +14,8 @@ Each game was written from a single prompt, quoted in the README's Prompt column
 <game>/index.html     the game (most are one self-contained file)
 screenshots/          <game>-1.jpg, -2.jpg, -3.jpg — used by the README table
 README.md             one table row per game: name, description, prompt, play link, screenshots
-index.html            launcher page for GitHub Pages; builds its tiles from the README table at runtime
+index.html            launcher page for GitHub Pages; builds its tiles from the README table at runtime,
+                      and index.html#<folder> opens a single game's page instead of the grid
 tools/build-site.mjs  assembles _site/ (launcher + every game, Vite games built) for Pages
 .github/workflows/    pages.yml runs the build and deploys _site/ on push to main
 ```

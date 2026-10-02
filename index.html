@@ -65,7 +65,40 @@ h2 a:focus-visible{outline:none}
 .meta{margin-top:auto;padding-top:6px;display:flex;justify-content:space-between;gap:10px;align-items:center;font-family:var(--mono);font-size:12px;color:var(--dim)}
 .meta a{position:relative;z-index:2;color:var(--dim);text-decoration:none;border-bottom:1px solid var(--line)}
 .meta a:hover,.meta a:focus-visible{color:var(--gold);border-color:var(--gold);outline:none}
+.meta .links{display:flex;gap:12px}
 .note{font-family:var(--mono);font-size:14px;color:var(--dim);border:1px dashed var(--line);padding:18px}
+/* ---------- single game page ---------- */
+.back{display:inline-flex;gap:8px;align-items:center;font-family:var(--mono);font-size:13px;color:var(--cream);text-decoration:none;border-bottom:1px solid var(--line);padding-bottom:2px}
+.back:hover,.back:focus-visible{color:var(--gold);border-color:var(--gold);outline:none}
+.detail{display:grid;gap:22px}
+.dtop{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}
+.pager{display:flex;gap:8px}
+.pager a{font-family:var(--mono);font-size:13px;color:var(--dim);text-decoration:none;border:1px solid var(--line);padding:6px 10px;background:var(--panel)}
+.pager a:hover,.pager a:focus-visible{color:var(--gold);border-color:var(--gold);outline:none}
+.dhead{display:grid;gap:10px}
+.dhead h1{font-size:clamp(44px,9vw,104px)}
+.dgrid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px;align-items:start}
+.stage{position:relative;aspect-ratio:16/9;max-width:100%;background:#0c0a14;border:1px solid var(--line);overflow:hidden}
+.stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s}
+.stage img.on{opacity:1}
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.thumbs button{padding:0;border:1px solid var(--line);background:#0c0a14;cursor:pointer;aspect-ratio:16/9;max-width:100%;overflow:hidden}
+.thumbs button img{width:100%;height:100%;object-fit:cover;display:block;opacity:.6}
+.thumbs button.on{border-color:var(--gold)}
+.thumbs button.on img,.thumbs button:hover img{opacity:1}
+.thumbs button:focus-visible{outline:3px solid var(--coral);outline-offset:2px}
+.side{display:grid;gap:16px;background:var(--panel);border:1px solid var(--line);padding:18px}
+.side .dd{margin:0;font-size:16px;line-height:1.55}
+.side .dd em{color:var(--gold);font-style:normal}
+.side .dp{margin:0;font-family:var(--mono);font-size:13px;line-height:1.6;color:var(--dim);border-left:2px solid var(--coral);padding-left:10px}
+.side .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:-8px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.go{font-family:var(--disp);font-size:22px;color:#1a1204;background:var(--gold);padding:10px 22px 8px;text-decoration:none;box-shadow:0 5px 0 #a8701a}
+.go:hover,.go:focus-visible{background:#ffd47a;outline:none}
+.ghost{font-family:var(--mono);font-size:13px;color:var(--cream);background:transparent;border:1px solid var(--line);padding:9px 12px;cursor:pointer;text-decoration:none}
+.ghost:hover,.ghost:focus-visible{border-color:var(--gold);color:var(--gold);outline:none}
+.share{font-family:var(--mono);font-size:12px;color:var(--dim);word-break:break-all}
+@media (max-width:860px){.dgrid{grid-template-columns:1fr}.actions{order:-1}.share{order:-1;margin-top:-6px}}
 footer{margin-top:44px;font-family:var(--mono);font-size:12px;color:var(--dim);display:flex;flex-wrap:wrap;gap:8px 20px}
 footer a{color:var(--cream)}
 @media (prefers-reduced-motion:reduce){.shot img{transition:none}.bar .coin{animation:none}.tile{transition:none}}
@@ -73,14 +106,28 @@ footer a{color:var(--cream)}
 </head>
 <body>
 <div class="wrap">
-  <header>
+  <header id="shelfHead">
     <div class="kicker">Select game</div>
     <h1>CLONES</h1>
     <p class="lede">Browser games, mostly remakes of classics, each built by Claude Code from <b>a single prompt</b>. Every one plays on a phone too. <span id="how">Hover a tile to flip through it, click to play.</span></p>
     <div class="bar"><span class="coin">● Insert coin</span><span id="count">Loading the shelf…</span><a href="https://github.com/mdellavo/claude-game-clones">Source on GitHub</a></div>
   </header>
   <main class="grid" id="grid" aria-live="polite"></main>
-  <footer><span>Games are listed from the repo README, in the same order.</span><span>Screenshots cycle on hover, or on their own on a touch screen.</span></footer>
+  <section class="detail" id="detail" hidden aria-live="polite">
+    <div class="dtop"><a class="back" href="#">◂ All games</a><nav class="pager" aria-label="Other games"><a id="prev" href="#">◂ prev</a><a id="next" href="#">next ▸</a></nav></div>
+    <div class="dhead"><div class="kicker" id="dKick">Game</div><h1 id="dName"></h1></div>
+    <div class="dgrid">
+      <div><div class="stage" id="dStage"></div><div class="thumbs" id="dThumbs"></div></div>
+      <aside class="side">
+        <p class="dd" id="dDesc"></p>
+        <div class="lbl">The prompt</div>
+        <p class="dp" id="dPrompt"></p>
+        <div class="actions"><a class="go" id="dPlay">PLAY ▸</a><a class="ghost" id="dClaude" target="_blank" rel="noopener">claude.ai ↗</a><button class="ghost" id="dCopy" type="button">Copy link</button></div>
+        <div class="share" id="dUrl"></div>
+      </aside>
+    </div>
+  </section>
+  <footer id="shelfFoot"><span>Games are listed from the repo README, in the same order.</span><span>Screenshots cycle on hover, or on their own on a touch screen.</span><span>Every game has its own page: add <code>#folder</code> to this address, or use the link on its tile.</span></footer>
 </div>
 
 <template id="tileT">
@@ -90,7 +137,7 @@ footer a{color:var(--cream)}
       <h2><a class="play"></a></h2>
       <p class="desc"></p>
       <p class="prompt"></p>
-      <div class="meta"><span class="dir"></span><a class="alt" target="_blank" rel="noopener">claude.ai ↗</a></div>
+      <div class="meta"><span class="dir"></span><span class="links"><a class="page">link</a><a class="alt" target="_blank" rel="noopener">claude.ai ↗</a></span></div>
     </div>
   </article>
 </template>
@@ -101,6 +148,8 @@ const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const touch = matchMedia('(hover: none)').matches;
 if (touch) document.getElementById('how').textContent = 'Tap a tile to play.';
 
+const slug = g => g.dir.replace(/\/+$/, '');
+let shelf = [];
 function esc(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 function inline(md) { return esc(md).replace(/\*([^*]+)\*/g, '<em>$1</em>'); }
 function text(html) { const d = document.createElement('div'); d.innerHTML = html; return d.textContent; }
@@ -128,6 +177,7 @@ function build(games) {
     const p = el.querySelector('.prompt');
     if (g.prompt) p.textContent = `“${g.prompt}”`; else p.remove();
     el.querySelector('.dir').textContent = g.dir;
+    const pg = el.querySelector('.page'); pg.href = '#' + slug(g); pg.setAttribute('aria-label', `Page for ${g.name}`);
     const alt = el.querySelector('.alt'); if (g.link) { alt.href = g.link; alt.setAttribute('aria-label', `${g.name} on claude.ai`); } else alt.remove();
     const shot = el.querySelector('.shot'), dots = el.querySelector('.dots');
     g.shots.forEach((src, i) => {
@@ -175,9 +225,45 @@ if (touch && !reduce && 'IntersectionObserver' in window) {
   new MutationObserver(() => grid.querySelectorAll('.tile').forEach(t => io.observe(t))).observe(grid, { childList: true });
 }
 
+// ----- single game pages: index.html#<folder> shows one game instead of the grid
+const baseTitle = document.title;
+function route() {
+  const id = decodeURIComponent(location.hash.slice(1)).replace(/\/+$/, '');
+  const i = shelf.findIndex(g => slug(g) === id), g = shelf[i];
+  const solo = !!g;
+  document.getElementById('detail').hidden = !solo;
+  for (const el of ['shelfHead', 'grid', 'shelfFoot']) document.getElementById(el).hidden = solo;
+  if (!solo) { document.title = baseTitle; if (id) history.replaceState(null, '', location.pathname + location.search); return; }
+  document.title = `${g.name} · ${baseTitle}`;
+  document.getElementById('dKick').textContent = `Game ${i + 1} of ${shelf.length} · ${slug(g)}/`;
+  document.getElementById('dName').textContent = g.name;
+  document.getElementById('dDesc').innerHTML = inline(g.desc);
+  const p = document.getElementById('dPrompt'); p.textContent = g.prompt ? `“${g.prompt}”` : ''; p.previousElementSibling.hidden = !g.prompt;
+  document.getElementById('dPlay').href = g.dir;
+  const c = document.getElementById('dClaude'); c.hidden = !g.link; if (g.link) c.href = g.link;
+  const url = location.href.split('#')[0] + '#' + slug(g); document.getElementById('dUrl').textContent = url;
+  const prev = shelf[(i - 1 + shelf.length) % shelf.length], next = shelf[(i + 1) % shelf.length];
+  const pa = document.getElementById('prev'), na = document.getElementById('next');
+  pa.href = '#' + slug(prev); pa.textContent = `◂ ${prev.name}`; na.href = '#' + slug(next); na.textContent = `${next.name} ▸`;
+  const stage = document.getElementById('dStage'), thumbs = document.getElementById('dThumbs');
+  stage.innerHTML = ''; thumbs.innerHTML = '';
+  const imgs = g.shots.map((src, k) => { const im = document.createElement('img'); im.src = src; im.alt = `${g.name} screenshot ${k + 1}`; if (!k) im.className = 'on'; stage.appendChild(im); return im; });
+  const btns = g.shots.map((src, k) => { const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', `Show screenshot ${k + 1}`); if (!k) b.className = 'on'; const t = document.createElement('img'); t.src = src; t.alt = ''; b.appendChild(t); b.addEventListener('click', () => show(k)); thumbs.appendChild(b); return b; });
+  const show = k => { imgs.forEach((m, j) => m.classList.toggle('on', j === k)); btns.forEach((b, j) => b.classList.toggle('on', j === k)); };
+  if (g.shots.length < 2) thumbs.hidden = true; else thumbs.hidden = false;
+  window.scrollTo(0, 0);
+}
+addEventListener('hashchange', () => { if (shelf.length) route(); });
+addEventListener('keydown', e => { if (document.getElementById('detail').hidden) return; if (e.key === 'Escape') location.hash = ''; if (e.key === 'ArrowLeft') document.getElementById('prev').click(); if (e.key === 'ArrowRight') document.getElementById('next').click(); });
+document.getElementById('dCopy').addEventListener('click', () => {
+  const b = document.getElementById('dCopy'), url = document.getElementById('dUrl').textContent;
+  const done = ok => { b.textContent = ok ? 'Copied' : 'Select the link below'; setTimeout(() => b.textContent = 'Copy link', 1600); };
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => done(true), () => done(false)); else done(false);
+});
+
 fetch('README.md', { cache: 'no-cache' })
   .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
-  .then(md => { const games = parse(md); if (!games.length) throw new Error('no rows'); build(games); })
+  .then(md => { const games = parse(md); if (!games.length) throw new Error('no rows'); shelf = games; build(games); route(); })
   .catch(() => {
     grid.innerHTML = '<p class="note">The game list is read from README.md, which the browser could not load. Serve this folder over HTTP (for example <code>python3 -m http.server</code>) instead of opening the file directly.</p>';
     document.getElementById('count').textContent = 'Shelf unavailable';
