@@ -67,6 +67,22 @@
   .stats b { color: var(--amber); font-weight: 400; text-align: right; }
   .hint { font-family: var(--px); font-size: 10px; color: var(--steel); letter-spacing: .1em; }
 
+  .lb { width: 100%; max-width: 340px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; font-family: var(--px); }
+  .lb-form { display: flex; gap: 10px; margin: 0; }
+  .lb-form input { flex: 1; min-width: 0; box-sizing: border-box; font: 16px var(--px); color: var(--hull); background: var(--panel);
+    border: 2px solid var(--line); border-radius: 0; padding: 8px 10px; user-select: text; -webkit-user-select: text; }
+  .lb-form input:focus { outline: none; border-color: var(--signal); }
+  .lb-form .btn { font-size: 16px; padding: 8px 18px; }
+  .lb-form .btn:disabled { opacity: .5; cursor: default; }
+  .lb-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12px; font-variant-numeric: tabular-nums; text-align: left; }
+  .lb-list li { display: grid; grid-template-columns: 3ch 1fr auto; gap: 8px; }
+  .lb-list li span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lb-list li i { font-style: normal; color: var(--steel); }
+  .lb-list li b { color: var(--amber); font-weight: 400; }
+  .lb-list li.me { color: var(--signal); }
+  #over.lb-on { overflow-y: auto; touch-action: pan-y; }
+  #over.lb-on .card { margin: auto; }
+
   #touch { position: absolute; right: 16px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(2, 64px); gap: 10px; }
   #touch button { pointer-events: auto; width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--hull); background: rgba(8,12,34,.55);
     color: var(--hull); font: 11px var(--px); }
@@ -132,6 +148,14 @@
         <span>ACCURACY</span><b id="sAcc">0%</b>
         <span>SHIELD LEFT</span><b id="sShield">0%</b>
         <span>BEST</span><b id="sBest">0</b>
+      </div>
+      <div class="lb" id="lb" hidden>
+        <form class="lb-form" id="lbForm" autocomplete="off">
+          <input id="lbName" type="text" maxlength="12" placeholder="CALLSIGN" aria-label="Callsign" autocapitalize="characters" spellcheck="false" enterkeyhint="send">
+          <button class="btn" id="lbSend" type="submit">Send</button>
+        </form>
+        <div class="hint" id="lbNote"></div>
+        <ol class="lb-list" id="lbList"></ol>
       </div>
       <button class="btn" id="retryBtn" type="button">Fly Again</button>
     </div>

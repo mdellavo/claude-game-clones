@@ -37,6 +37,19 @@ h2{font-family:var(--label);font-weight:400;font-size:28px;margin:0;color:var(--
 .btn:disabled{opacity:.5;cursor:wait}
 .btn:focus-visible{outline:3px solid var(--laser);outline-offset:5px}
 .fine{font-size:15px;color:var(--dim);margin:0;line-height:1.35}
+.lb{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+/* a centred column taller than the window would lose its top edge, so pin it and centre with margins */
+.screen:has(.lb:not([hidden])){align-items:flex-start}
+.screen:has(.lb:not([hidden])) .col{margin-block:auto}
+.lb form{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:4px}
+.lb input{flex:1 1 140px;min-width:0;font:600 18px var(--body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:11px 12px}
+.lb input:focus-visible{outline:2px solid var(--laser);outline-offset:2px}
+.lb ol{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:17px;font-variant-numeric:tabular-nums}
+.lb li{display:flex;gap:10px;color:var(--dim)}
+.lb li i{flex:none;width:2ch;text-align:right;font-style:normal;color:var(--sodium)}
+.lb li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:pre}
+.lb li b{font-weight:400;color:var(--ink)}
+.lb li.me,.lb li.me b{color:var(--laser)}
 
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
 .panel{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px 12px}
@@ -120,6 +133,10 @@ body.touch #toasts{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
     </dl>
     <button class="btn" id="startBtn" disabled>Loading Cleveland…</button>
     <p class="fine" id="best">Follow the beams of light. Beverly's apartment downtown is a safe place to catch your breath.</p>
+    <div class="lb" id="tLb" hidden>
+      <div class="eyebrow">FASTEST DUCKS HOME</div>
+      <ol id="tLbList"></ol>
+    </div>
   </div>
 </section>
 
@@ -143,6 +160,15 @@ body.touch #toasts{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
       <dt>BEST TIME</dt><dd id="wBest">0:00</dd>
     </dl>
     <button class="btn" id="againBtn">Play again</button>
+    <div class="lb" id="wLb" hidden>
+      <div class="eyebrow">FASTEST DUCKS HOME</div>
+      <form id="lbForm" autocomplete="off">
+        <input id="lbName" type="text" maxlength="12" placeholder="Your name" aria-label="Name for the leaderboard" autocapitalize="characters" spellcheck="false" enterkeyhint="send">
+        <button class="btn" id="lbSend" type="submit">Post time</button>
+      </form>
+      <p class="fine" id="lbMsg" aria-live="polite"></p>
+      <ol id="wLbList"></ol>
+    </div>
   </div>
 </section>
 
@@ -1058,6 +1084,72 @@ function flash(color, strength = .45){
 function loadBest(){ try { return parseFloat(localStorage.getItem('howard86-best')) || 0; } catch (e){ return 0; } }
 function saveBest(v){ try { localStorage.setItem('howard86-best', String(v)); } catch (e){} }
 
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'howard-the-duck';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+// The score is the run's time in whole milliseconds, so a lower score is a better one.
+let lbRun = null;
+function lbList(ol, scores, me){
+  ol.textContent = '';
+  scores.slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'), r = document.createElement('i'), n = document.createElement('span'), t = document.createElement('b');
+    r.textContent = i + 1; n.textContent = s.name; t.textContent = fmtTime(s.score / 1000);
+    if (i + 1 === me) li.className = 'me';
+    li.append(r, n, t); ol.appendChild(li);
+  });
+}
+function lbOpen(){
+  const run = lbRun = { ms: Math.round(S.elapsed * 1000), sent: false };
+  let name = ''; try { name = localStorage.getItem('howard86-name') || ''; } catch (e){}
+  $('lbName').value = name; $('lbSend').disabled = false; $('lbForm').hidden = false;
+  $('lbMsg').textContent = 'Loading the board…'; $('wLbList').textContent = ''; $('wLb').hidden = false;
+  lbFetch().then((r) => {
+    if (lbRun !== run || run.sent) return;
+    if (!r || !Array.isArray(r.scores)){ $('lbMsg').textContent = 'Leaderboard offline.'; return; }
+    $('lbMsg').textContent = r.scores.length ? '' : 'No times posted yet. Be the first duck home.';
+    lbList($('wLbList'), r.scores);
+  });
+}
+async function lbSubmit(){
+  const run = lbRun;
+  if (!run || run.sent) return;
+  run.sent = true; $('lbSend').disabled = true;
+  const name = $('lbName').value.trim().slice(0, 12) || 'ANON';
+  try { localStorage.setItem('howard86-name', name); } catch (e){}
+  $('lbMsg').textContent = 'Posting…';
+  const r = await lbFetch({ name, score: run.ms });
+  if (lbRun !== run) return;
+  if (!r || !Array.isArray(r.scores)){
+    run.sent = false; $('lbSend').disabled = false;
+    $('lbMsg').textContent = 'Leaderboard offline. Your best time is still saved on this device.';
+    return;
+  }
+  $('lbForm').hidden = true;
+  $('lbMsg').textContent = r.rank ? `Posted. You are #${r.rank} on the board.` : 'Posted, but this run did not make the board.';
+  lbList($('wLbList'), r.scores, r.rank);
+}
+// keep typing in the name field (and Enter on the post button) away from the game's key handlers
+for (const ev of ['keydown', 'keyup']) $('wLb').addEventListener(ev, (e) => e.stopPropagation());
+$('lbForm').addEventListener('submit', (e) => { e.preventDefault(); lbSubmit(); });
+
 // minimap
 const mapC = $('map'), MW = 190, MH = 204, mdpr = Math.min(devicePixelRatio, 2);
 mapC.width = MW * mdpr; mapC.height = MH * mdpr;
@@ -1208,6 +1300,7 @@ function win(){
   $('wTime').textContent = fmtTime(S.elapsed); $('wKick').textContent = S.kicked; $('wRuff').textContent = S.ruffled; $('wBest').textContent = fmtTime(nb);
   $('hud').hidden = true; $('touch').hidden = true; $('win').hidden = false; $('againBtn').focus();
   howard.visible = false;
+  if (LB_URL) lbOpen();
 }
 
 // ---------------------------------------------------------------- updates
@@ -1500,6 +1593,7 @@ async function init(){
   updateHUD();
   const best = loadBest();
   if (best) $('best').textContent = `Best time home: ${fmtTime(best)}. Follow the beams of light, and stop by Beverly's apartment downtown when you need patching up.`;
+  lbFetch().then((r) => { if (r && Array.isArray(r.scores) && r.scores.length){ lbList($('tLbList'), r.scores); $('tLb').hidden = false; } });
   const sb = $('startBtn'); sb.disabled = false; sb.textContent = 'Hit the streets'; sb.focus();
   requestAnimationFrame(frame);
 }

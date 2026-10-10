@@ -23,6 +23,30 @@
   // ---------- persistence ----------
   function loadBest() { try { return +localStorage.getItem('polygonwing.best') || 0; } catch (e) { return 0; } }
   function saveBest(v) { try { localStorage.setItem('polygonwing.best', String(v)); } catch (e) { /* storage unavailable */ } }
+  function loadName() { try { return (localStorage.getItem('polygonwing.name') || '').slice(0, 12); } catch (e) { return ''; } }
+  function saveName(v) { try { localStorage.setItem('polygonwing.name', v); } catch (e) { /* storage unavailable */ } }
+
+  // Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+  const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+  const LB_GAME = 'polygon-wing';
+  async function lbFetch(entry) {
+    if (!LB_URL) return null;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 5000);
+    try {
+      const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ game: LB_GAME, ...entry }),
+        signal: ctl.signal,
+      } : { signal: ctl.signal });
+      return res.ok ? await res.json() : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   // ---------- comms ----------
   const pctx = $('portrait').getContext('2d');
@@ -651,6 +675,7 @@
   }
   function start() {
     A.init();
+    lbRun++;
     reset();
     mode = 'play';
     $('title').hidden = true; $('over').hidden = true; $('paused').hidden = true;
@@ -675,10 +700,68 @@
     $('hiScore').textContent = 'BEST ' + String(best).padStart(3, '0');
     $('hud').hidden = true; $('touch').hidden = true;
     $('over').hidden = false;
+    lbOpen();
     SF.reticle.forEach((r) => { r.visible = false; });
     if (won) A.sfx.power();
     setTimeout(() => $('retryBtn').focus(), 60);
   }
+
+  // ---------- online leaderboard ----------
+  // lbRun identifies the run on screen, so a reply that arrives after a restart is dropped.
+  let lbRun = 0, lbBusy = false, lbSent = false;
+  const lbNote = (text) => { $('lbNote').textContent = text; };
+  function lbRender(scores, rank) {
+    const list = $('lbList');
+    list.textContent = '';
+    (Array.isArray(scores) ? scores : []).slice(0, 10).forEach((s, i) => {
+      const li = document.createElement('li'), pos = document.createElement('i'), name = document.createElement('span'), pts = document.createElement('b');
+      pos.textContent = (i + 1) + '.';
+      name.textContent = String(s.name);
+      pts.textContent = String(s.score);
+      if (i + 1 === rank) li.className = 'me';
+      li.append(pos, name, pts);
+      list.appendChild(li);
+    });
+    return list.childElementCount;
+  }
+  async function lbOpen() {
+    if (!LB_URL) return;
+    const run = ++lbRun;
+    lbBusy = false; lbSent = false;
+    $('over').classList.add('lb-on');
+    $('lb').hidden = false;
+    $('lbForm').hidden = stats.hits <= 0;
+    $('lbSend').disabled = false;
+    $('lbName').value = loadName();
+    lbRender([]);
+    lbNote('LOADING BOARD...');
+    const data = await lbFetch();
+    if (run !== lbRun || lbBusy || lbSent) return;
+    if (!data) { lbNote('LEADERBOARD OFFLINE'); return; }
+    lbNote(lbRender(data.scores) ? 'TOP PILOTS' : 'NO SCORES YET');
+  }
+  async function lbSubmit() {
+    if (lbBusy || lbSent || mode !== 'over') return;
+    const name = $('lbName').value.trim().slice(0, 12);
+    if (!name) { $('lbName').focus(); return; }
+    saveName(name);
+    const run = lbRun;
+    lbBusy = true;
+    $('lbSend').disabled = true;
+    lbNote('SENDING...');
+    const data = await lbFetch({ name, score: stats.hits });
+    if (run !== lbRun) return;
+    lbBusy = false;
+    if (!data) { $('lbSend').disabled = false; lbNote('OFFLINE - TRY AGAIN'); return; }
+    lbSent = true;
+    $('lbForm').hidden = true;
+    lbRender(data.scores, data.rank);
+    lbNote(data.rank ? 'YOU RANK #' + data.rank : 'NOT ON THE BOARD THIS TIME');
+  }
+  $('lbForm').addEventListener('submit', (e) => { e.preventDefault(); lbSubmit(); });
+  // Keep typing in the name field away from the window key handler (Enter there restarts).
+  ['keydown', 'keyup', 'keypress'].forEach((t) => $('lbName').addEventListener(t, (e) => e.stopPropagation()));
+
   function setPause(on) {
     if (on && mode === 'play') { mode = 'paused'; $('paused').hidden = false; A.music(false); }
     else if (!on && mode === 'paused') { mode = 'play'; $('paused').hidden = true; if (!P.dead) A.music(true); last = performance.now(); }

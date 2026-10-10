@@ -61,6 +61,16 @@ h2{font-family:var(--disp);font-weight:400;font-size:clamp(30px,7vw,64px);line-h
 .stat b{display:block;font-family:var(--disp);font-weight:400;font-size:28px;font-variant-numeric:tabular-nums}
 .stat span{font-size:11px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
 .err{color:var(--amber);font-size:14px}
+.lbform{display:flex;gap:10px;flex-wrap:wrap}
+.lbform input{flex:1 1 150px;min-width:0;font:700 16px var(--ui);letter-spacing:.1em;background:rgba(239,230,207,.06);color:var(--paper);
+  border:1px solid rgba(239,230,207,.5);border-radius:0;padding:11px 12px;user-select:text;-webkit-user-select:text}
+.lbform input:focus-visible{outline:2px solid var(--atom);outline-offset:3px}
+.lbform .ghost:disabled{opacity:.4;cursor:default}
+.lblist{list-style:none;margin:0;padding:0;display:grid;font-size:14px;font-variant-numeric:tabular-nums}
+.lblist li{display:grid;grid-template-columns:2.2em 1fr auto;gap:10px;padding:4px 6px;border-top:1px solid rgba(239,230,207,.16)}
+.lblist li span:first-child{color:var(--dim)}
+.lblist li span:nth-child(2){white-space:pre;overflow:hidden;text-overflow:ellipsis}
+.lblist li.me{background:rgba(111,243,232,.1);color:var(--atom)}
 
 /* ---------- HUD ---------- */
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5;
@@ -241,6 +251,15 @@ body.touch #hint{display:none}
     <h2 id="endTitle">PORT HALVARD LEVELED</h2>
     <p class="lede" id="endLede"></p>
     <div class="stats" id="endStats"></div>
+    <div class="bulletin" id="lb" hidden>
+      <div class="hd"><span>Wreckage board · Top 10</span><span id="lbScore"></span></div>
+      <div class="lbform" id="lbForm">
+        <input id="lbName" type="text" maxlength="12" placeholder="Your name" aria-label="Name for the wreckage board" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send">
+        <button class="ghost" id="lbSend">File report</button>
+      </div>
+      <div class="lbl" id="lbNote" aria-live="polite"></div>
+      <ol class="lblist" id="lbList"></ol>
+    </div>
     <div class="row">
       <button class="go" id="nextBtn">NEXT CITY</button>
       <button class="ghost" id="retryBtn">Replay city</button>
@@ -281,6 +300,28 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 };
+
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'gorvax-rising';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /* =========================================================== renderer */
 const canvas = $('gl');
@@ -2071,7 +2112,49 @@ function endCity(won) {
   $('nextBtn').hidden = !won || last;
   $('retryBtn').textContent = won ? 'Replay city' : 'Try again';
   $('end').hidden = false;
+  lbOpen(Math.round(destroyedValue));
 }
+// Wreckage board on the end screen. The score is the run's raw damage value, the number behind the "City destroyed" bar.
+let lbRun = null;
+function lbRender(scores, rank) {
+  const ol = $('lbList'); ol.innerHTML = '';
+  (Array.isArray(scores) ? scores : []).slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'); if (i + 1 === rank) li.className = 'me';
+    for (const v of [i + 1, s.name, Number(s.score).toLocaleString('en-US')]) { const sp = document.createElement('span'); sp.textContent = v; li.appendChild(sp); }
+    ol.appendChild(li);
+  });
+}
+async function lbOpen(score) {
+  if (!LB_URL) return;
+  const run = lbRun = { score, sent: false };
+  $('lb').hidden = false; $('lbForm').hidden = score <= 0; $('lbSend').disabled = $('lbName').disabled = false;
+  $('lbName').value = String(store.get('gorvax-name', '')).slice(0, 12);
+  $('lbScore').textContent = 'Your damage ' + score.toLocaleString('en-US');
+  $('lbNote').textContent = 'Raising the board…'; lbRender([]);
+  const res = await lbFetch();
+  if (run !== lbRun || run.sent) return;
+  $('lbNote').textContent = !res ? 'Board offline' : res.scores && res.scores.length ? '' : 'No reports filed yet';
+  lbRender(res && res.scores);
+}
+async function lbSubmit() {
+  const run = lbRun;
+  if (!run || run.sent || run.score <= 0) return;
+  const name = $('lbName').value.trim().slice(0, 12) || 'ANON';
+  run.sent = true; $('lbSend').disabled = $('lbName').disabled = true;
+  store.set('gorvax-name', name);
+  $('lbNote').textContent = 'Filing…';
+  const res = await lbFetch({ name, score: run.score });
+  if (run !== lbRun) return;
+  if (!res) { run.sent = false; $('lbSend').disabled = $('lbName').disabled = false; $('lbNote').textContent = 'Board offline · report not filed'; return; }
+  $('lbForm').hidden = true;
+  $('lbNote').textContent = res.rank ? `Filed · you rank #${res.rank}` : 'Filed · not enough to make the board';
+  lbRender(res.scores, res.rank);
+}
+$('lbSend').onclick = lbSubmit;
+for (const t of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(t, e => {
+  e.stopPropagation();
+  if (t === 'keydown' && e.key === 'Enter') { e.preventDefault(); lbSubmit(); }
+});
 function toTitle() {
   state = 'title';
   for (const id of ['end', 'pause', 'hud', 'touch', 'cross', 'hint']) $(id).hidden = true;

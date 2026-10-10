@@ -76,6 +76,17 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 h2{font:800 clamp(34px,8vw,64px) Oxanium,sans-serif;margin:0;letter-spacing:.06em}
 .stats{display:grid;grid-template-columns:1fr auto;gap:4px 18px;max-width:380px;margin:14px auto;text-align:left;font-size:14px}
 .stats b{color:#fff;text-align:right;font-variant-numeric:tabular-nums}
+#lb{max-width:380px;margin:4px auto 14px}
+#lbF{display:flex;gap:8px;justify-content:center;margin:8px 0}
+#lbN{flex:1;min-width:0;font:600 16px "IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:8px 10px;-webkit-user-select:text;user-select:text;touch-action:manipulation}
+#lbN:focus{outline:2px solid var(--amber);outline-offset:1px}
+#lbF .btn{font-size:14px;padding:8px 16px;touch-action:manipulation}
+#lbF .btn:disabled{opacity:.4;cursor:default}
+#lbM{font-size:13px;color:var(--amber);min-height:18px;margin:6px 0}
+#lbL{list-style:none;margin:0;padding:0;font-size:13px;text-align:left;font-variant-numeric:tabular-nums}
+#lbL li{display:grid;grid-template-columns:26px 1fr auto;gap:8px;padding:2px 6px;border-bottom:1px solid rgba(120,200,255,.1)}
+#lbL li i{font-style:normal;color:var(--dim)} #lbL li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} #lbL li b{color:#fff;font-weight:600}
+#lbL li.me{background:rgba(255,176,58,.16)} #lbL li.me span{color:var(--amber)}
 @media (max-width:720px){
   #me{min-width:0;padding:7px 9px} #me .n{font-size:14px} #me .row{font-size:11px;margin-top:2px}
   #defcon{top:auto;bottom:calc(196px + env(safe-area-inset-bottom,0px));padding:6px 10px} #dc{font-size:26px}
@@ -124,6 +135,12 @@ h2{font:800 clamp(34px,8vw,64px) Oxanium,sans-serif;margin:0;letter-spacing:.06e
     <h2 id="eH">VICTORY</h2>
     <p class="lede" id="eP"></p>
     <div class="stats" id="eS"></div>
+    <div id="lb" hidden>
+      <div class="tag" id="lbT">WORLD RANKING · SURVIVORS</div>
+      <form id="lbF" autocomplete="off"><input id="lbN" type="text" maxlength="12" placeholder="CALLSIGN" aria-label="Name for the leaderboard" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="send"><button class="btn" id="lbB" type="submit">SUBMIT</button></form>
+      <div id="lbM" role="status"></div>
+      <ol id="lbL"></ol>
+    </div>
     <button class="big" id="againBtn" type="button">PLAY AGAIN</button>
   </div>
 </div>
@@ -149,6 +166,28 @@ const damp = (a, b, k, dt) => lerp(a, b, 1 - Math.exp(-k * dt));
 const DEG = Math.PI / 180, R = 100, EKM = 6371;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'second-strike';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /* ================= GEOGRAPHY ================= */
 function unwrap(pts) { const out = [pts[0].slice()]; for (let i = 1; i < pts.length; i++) { let lon = pts[i][0]; const p = out[i - 1][0]; while (lon - p > 180) lon -= 360; while (lon - p < -180) lon += 360; out.push([lon, pts[i][1]]); } return out; }
@@ -603,16 +642,54 @@ function endGame(won) {
     $('eP').textContent = won ? `${human.name} survives with ${fmtPop(popOf(human))} people. There is nobody left to negotiate with.` : `${human.name} lost ${Math.round((1 - popOf(human) / human.popPeak) * 100)}% of its people. The war goes on without you.`;
     $('eS').innerHTML = `<span>Time</span><b>${Math.floor(gameT / 60)}:${String(Math.floor(gameT % 60)).padStart(2, '0')}</b><span>Warheads you launched</span><b>${human.launched}</b><span>Warheads you intercepted</span><b>${human.intercepts}</b><span>Deaths you caused</span><b>${fmtPop(human.kills)}</b><span>Countries annexed</span><b>${human.annexed}</b><span>World dead</span><b>${fmtPop(dead)}</b>`;
     if (won) store.set('ss-wins', (store.get('ss-wins', 0) || 0) + 1);
+    lbOpen(won ? Math.round(popOf(human)) : null);
     setTimeout(() => $('againBtn').focus({ preventScroll: true }), 50);
   }, won ? 1200 : 2500);
 }
+// Leaderboard panel on the end screen. The score is the winner's surviving population in millions;
+// a destroyed nation has nobody left to count, so a defeat only shows the board.
+let lbRun = null;
+function lbList(data, rank) {
+  const ol = $('lbL'); ol.textContent = '';
+  if (!data || !Array.isArray(data.scores)) return false;
+  data.scores.slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'), n = document.createElement('i'), nm = document.createElement('span'), sc = document.createElement('b');
+    n.textContent = i + 1 + '.'; nm.textContent = String(s.name); sc.textContent = fmtPop(+s.score || 0);
+    if (rank === i + 1) li.className = 'me';
+    li.append(n, nm, sc); ol.append(li);
+  });
+  return true;
+}
+function lbOpen(score) {
+  if (!LB_URL) return;
+  const run = lbRun = { score, sent: score == null, busy: false }, mine = score == null ? '' : `Your survivors: ${fmtPop(score)}`;
+  $('lb').hidden = false; $('lbF').hidden = score == null; $('lbB').disabled = false; $('lbL').textContent = '';
+  $('lbN').value = String(store.get('ss-name', '') || '').slice(0, 12);
+  $('lbM').textContent = mine;
+  lbFetch().then(d => { if (run !== lbRun || run.busy || (run.sent && score != null)) return; if (!lbList(d)) $('lbM').textContent = (mine ? mine + ' · ' : '') + 'Leaderboard offline'; });
+}
+$('lbF').addEventListener('submit', async e => {
+  e.preventDefault();
+  const run = lbRun; if (!run || run.sent || run.busy) return;
+  const name = $('lbN').value.trim().slice(0, 12).toUpperCase() || 'ANON';
+  store.set('ss-name', name);
+  run.busy = true; $('lbB').disabled = true; $('lbM').textContent = 'Transmitting…';
+  const d = await lbFetch({ name, score: run.score });
+  run.busy = false; if (run !== lbRun) return;
+  if (!d) { $('lbB').disabled = false; $('lbM').textContent = 'Leaderboard offline. Score not sent.'; return; }
+  run.sent = true; $('lbF').hidden = true; $('againBtn').focus({ preventScroll: true });
+  $('lbM').textContent = d.rank ? `${fmtPop(run.score)} survivors · world rank #${d.rank}` : `${fmtPop(run.score)} survivors · not in the top 50`;
+  lbList(d, d.rank);
+});
+// Keep typing in the name field away from the game's window key handler (M mutes, Space pauses).
+for (const t of ['keydown', 'keyup', 'keypress']) $('lbN').addEventListener(t, e => e.stopPropagation());
 function renderNations() {
   const el = $('nations'), sel = store.get('ss-nation', 'USA');
   el.innerHTML = FACTIONS.map(f => { const c = byA[f.a]; const hard = c.pop < 30 ? 'HARD' : c.pop < 200 ? 'MEDIUM' : 'EASY'; return `<button type="button" data-a="${f.a}" class="${f.a === sel ? 'sel' : ''}"><b><i style="background:${hex(f.color)}"></i>${f.name}</b>${fmtPop(c.pop)} people · ${hard}</button>`; }).join('');
   el.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { store.set('ss-nation', b.dataset.a); renderNations(); }));
 }
 $('startBtn').addEventListener('click', () => startGame(store.get('ss-nation', 'USA')));
-$('againBtn').addEventListener('click', () => { $('end').hidden = true; $('title').hidden = false; state = 'title'; renderNations(); });
+$('againBtn').addEventListener('click', () => { $('end').hidden = true; $('lb').hidden = true; lbRun = null; $('title').hidden = false; state = 'title'; renderNations(); });
 if (isTouch) $('keysD').textContent = 'Drag to spin the globe · pinch to zoom · tap a country to act on it · tap a spot on an enemy to target it';
 
 let last = performance.now(), uiT = 0;

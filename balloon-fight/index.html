@@ -220,6 +220,52 @@
     font-size:14px;
     margin-top:14px;
   }
+  [hidden]{display:none!important;}
+  /* online leaderboard (only shown when LB_URL is set) */
+  #overlay-over.lb-on{gap:8px;}
+  .lb-form{display:flex;gap:8px;align-items:center;justify-content:center;max-width:100%;}
+  .lb-form input{
+    font-family:"VT323",ui-monospace,monospace;
+    font-size:20px;
+    line-height:1;
+    width:9.5em;
+    min-width:0;
+    padding:5px 8px;
+    color:var(--paper);
+    background:#150a20;
+    border:2px solid var(--trim-dim);
+    border-radius:6px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+  }
+  .lb-form input:focus{outline:none;border-color:var(--trim);}
+  .lb-form .pixel-btn{padding:9px 10px;font-size:10px;}
+  .lb-form .pixel-btn:disabled{opacity:.5;cursor:default;}
+  .overlay p.lb-status{color:var(--trim);}
+  .lb{
+    margin-top:14px;
+    padding:10px 14px 12px;
+    border-radius:10px;
+    background:linear-gradient(180deg,#3a2451,#241432);
+    box-shadow:0 0 0 2px var(--trim-dim), inset 0 0 18px rgba(255,204,51,.06);
+  }
+  .lb h2{
+    font-family:"Press Start 2P",monospace;
+    font-size:10px;
+    font-weight:400;
+    color:var(--trim);
+    letter-spacing:1px;
+    text-align:center;
+    margin:0 0 8px;
+  }
+  .lb ol{list-style:none;margin:0;padding:0;columns:2;column-gap:28px;font-size:19px;line-height:1.15;}
+  .lb li{display:flex;gap:8px;break-inside:avoid;}
+  .lb li .lb-rank{width:2.2em;text-align:right;color:var(--paper-dim);flex:none;}
+  .lb li .lb-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:pre;}
+  .lb li .lb-score{flex:none;color:var(--trim);}
+  .lb li.lb-me{color:var(--ok);}
+  .lb p{margin:0;text-align:center;font-size:17px;color:var(--paper-dim);}
+  @media (max-width:520px){ .lb ol{columns:1;} }
 </style>
 
 <div class="cabinet">
@@ -259,6 +305,11 @@
     <div class="overlay" id="overlay-over" hidden>
       <h1 style="font-size:clamp(14px,3.4vw,22px);">GAME OVER</h1>
       <p id="over-score"></p>
+      <div class="lb-form" id="lb-form" hidden>
+        <input id="lb-name" type="text" maxlength="12" placeholder="YOUR NAME" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" aria-label="Name for the leaderboard">
+        <button class="pixel-btn" id="lb-submit" type="button">Submit</button>
+      </div>
+      <p class="lb-status" id="lb-status" hidden></p>
       <button class="pixel-btn" id="btn-retry">Retry</button>
     </div>
   </div>
@@ -278,6 +329,12 @@
     </div>
     <div class="tbtn zap" id="t-zap" aria-label="Zap">ZAP</div>
     <div class="tbtn flap" id="t-flap" aria-label="Flap">FLAP</div>
+  </div>
+
+  <div class="lb" id="lb-board" hidden>
+    <h2>TOP 10</h2>
+    <ol id="lb-list"></ol>
+    <p id="lb-empty" hidden>No scores yet. Be the first!</p>
   </div>
 </div>
 
@@ -1435,6 +1492,28 @@ var units = {
   let highScore = 0;
   try { highScore = parseInt(localStorage.getItem('balloonFightHighScore') || '0', 10) || 0; } catch(e){}
 
+  // Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+  const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+  const LB_GAME = 'balloon-fight';
+  async function lbFetch(entry) {
+    if (!LB_URL) return null;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 5000);
+    try {
+      const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ game: LB_GAME, ...entry }),
+        signal: ctl.signal,
+      } : { signal: ctl.signal });
+      return res.ok ? await res.json() : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // ---------- audio ----------
   // SFX synthesized in-browser with jsfxr (public domain, github.com/chr15m/jsfxr).
   // Music: "Venus" from SketchyLogic's CC0 "NES Shooter Music" (opengameart.org/content/nes-shooter-music-5-tracks-3-jingles).
@@ -1761,7 +1840,100 @@ var units = {
     else if (s==='STAGE_CLEAR'){ setMusicDucked(false); }
     else if (s==='PAUSED'){ setMusicDucked(true); }
     else if (s==='GAME_OVER' || s==='TITLE'){ stopMusic(); }
+    if (s==='TITLE') lbRefresh();
+    lbSync();
   }
+
+  // ---------- online leaderboard UI ----------
+  const lbForm = document.getElementById('lb-form');
+  const lbName = document.getElementById('lb-name');
+  const lbSubmitBtn = document.getElementById('lb-submit');
+  const lbStatus = document.getElementById('lb-status');
+  let lbScores = null;      // last board from the server, null = unknown/offline
+  let lbRun = 0;            // bumped every game over, so late replies from an old run are ignored
+  let lbSent = false, lbBusy = false;
+  let lbMine = null;        // { rank } of this run's entry, for highlighting
+
+  try { lbName.value = (localStorage.getItem('balloonFightName') || '').slice(0, 12); } catch(e){}
+
+  // The board sits under the cabinet controls and only shows between runs.
+  function lbSync(){
+    const show = !!LB_URL && !!lbScores && (state==='TITLE' || state==='GAME_OVER');
+    document.getElementById('lb-board').hidden = !show;
+  }
+  function lbRender(){
+    const list = document.getElementById('lb-list');
+    list.textContent = '';
+    const top = (lbScores || []).slice(0, 10);
+    top.forEach((s, i)=>{
+      const li = document.createElement('li');
+      if (lbMine && lbMine.rank === i+1) li.className = 'lb-me';
+      const cells = [['lb-rank', (i+1) + '.'], ['lb-name', String(s.name)], ['lb-score', String(s.score)]];
+      for (const [cls, text] of cells){
+        const span = document.createElement('span');
+        span.className = cls;
+        span.textContent = text;
+        li.appendChild(span);
+      }
+      list.appendChild(li);
+    });
+    document.getElementById('lb-empty').hidden = top.length > 0;
+    lbSync();
+  }
+  function lbRefresh(){
+    if (!LB_URL) return;
+    lbFetch().then((res)=>{
+      if (!res || !Array.isArray(res.scores)) return;   // offline: keep whatever we had
+      lbScores = res.scores;
+      lbRender();
+    });
+  }
+  function lbSetStatus(text){
+    lbStatus.textContent = text;
+    lbStatus.hidden = !text;
+  }
+  function lbOffer(){
+    lbRun++;
+    lbSent = false; lbBusy = false; lbMine = null;
+    const on = !!LB_URL && score > 0;
+    lbForm.hidden = !on;
+    lbSubmitBtn.disabled = false;
+    lbSetStatus('');
+    document.getElementById('overlay-over').classList.toggle('lb-on', on);
+    if (LB_URL) lbRender();
+  }
+  function lbSubmit(){
+    if (!LB_URL || lbSent || lbBusy || state!=='GAME_OVER') return;
+    const name = lbName.value.trim().slice(0, 12);
+    if (!name){ lbName.focus(); return; }
+    try { localStorage.setItem('balloonFightName', name); } catch(e){}
+    const run = lbRun;
+    lbBusy = true;
+    lbSubmitBtn.disabled = true;
+    lbSetStatus('Sending...');
+    lbFetch({ name, score }).then((res)=>{
+      if (run !== lbRun) return;
+      lbBusy = false;
+      if (!res || !Array.isArray(res.scores)){
+        lbSubmitBtn.disabled = false;
+        lbSetStatus('Leaderboard offline - try again');
+        return;
+      }
+      lbSent = true;
+      lbForm.hidden = true;
+      lbSetStatus(res.rank ? `You are #${res.rank} worldwide!` : 'Sent - not in the top 50 this time');
+      lbMine = res.rank ? { rank: res.rank } : null;
+      lbScores = res.scores;
+      lbRender();
+    });
+  }
+  lbSubmitBtn.addEventListener('click', lbSubmit);
+  // Keys typed in the form must not reach the game's window listener (Space/Enter would
+  // leave the game-over screen, letters would steer). Keyup still passes so no key sticks.
+  lbForm.addEventListener('keydown', (e)=>{
+    e.stopPropagation();
+    if (e.code === 'Enter' || e.key === 'Enter'){ e.preventDefault(); lbSubmit(); }
+  });
 
   function updateHud(){
     document.getElementById('hud-score').textContent = score;
@@ -1815,6 +1987,7 @@ var units = {
       try { localStorage.setItem('balloonFightHighScore', String(highScore)); } catch(e){}
     }
     document.getElementById('over-score').textContent = `Score ${score}  ·  Best ${highScore}`;
+    lbOffer();
   }
 
   function popEnemyBalloon(en){

@@ -73,6 +73,25 @@
   .good { color: #69f0ae; }
   .bad { color: #ff5252; }
   .stats { margin-top: 16px; font-size: 11px; color: #ccc; line-height: 2; }
+  #lb { margin-top: 18px; padding-top: 16px; border-top: 3px solid #fff; font-size: 11px; }
+  #lb-form { display: flex; gap: 8px; justify-content: center; }
+  #lb-name { flex: 1; min-width: 0; max-width: 260px; font: inherit; font-size: 16px; color: #fff; background: #000;
+    border: 3px solid #fff; border-radius: 8px; padding: 10px; text-transform: uppercase; user-select: text; -webkit-user-select: text; }
+  #lb-name:focus { outline: none; border-color: var(--yellow); }
+  #lb-send { font: inherit; font-size: 12px; color: #111; background: var(--yellow); border: 3px solid #fff;
+    border-radius: 8px; padding: 12px 14px; }
+  #lb-send:disabled, #lb-name:disabled { opacity: 0.5; }
+  #lb-note { margin-top: 12px; color: var(--yellow); min-height: 11px; }
+  #lb-head { margin-top: 12px; color: #ccc; }
+  #lb-list { list-style: none; margin: 8px auto 0; padding: 0; max-width: 360px; line-height: 1.8; text-align: left; }
+  #lb-list li { display: flex; gap: 8px; }
+  #lb-list li.me { color: var(--yellow); }
+  #lb-list span:nth-child(1) { width: 3em; text-align: right; }
+  #lb-list span:nth-child(2) { flex: 1; overflow: hidden; white-space: pre; text-overflow: ellipsis; }
+  #results.lb-on { justify-content: flex-start; overflow: hidden auto; }
+  #results.lb-on .panel { margin: auto 0; width: 100%; max-width: 560px; min-width: 0; }
+  #results.lb-on table.results td { padding: 4px 8px; }
+  #results.lb-on .verdict, #results.lb-on .stats { margin-top: 12px; }
   #touch { position: fixed; inset: auto 0 0 0; display: none; justify-content: space-between; align-items: flex-end;
     padding: 0 16px 16px; pointer-events: none; }
   #touch .grp { display: flex; gap: 12px; align-items: flex-end; }
@@ -166,6 +185,15 @@
     <table class="results" id="res-table"></table>
     <div class="verdict" id="res-verdict"></div>
     <div class="stats" id="res-stats"></div>
+    <div id="lb" class="hidden">
+      <form id="lb-form" autocomplete="off">
+        <input id="lb-name" type="text" maxlength="12" placeholder="YOUR NAME" aria-label="Name for the leaderboard" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button id="lb-send" type="submit">SUBMIT</button>
+      </form>
+      <div id="lb-note"></div>
+      <div id="lb-head" class="hidden">TOP 10</div>
+      <ol id="lb-list"></ol>
+    </div>
     <div class="press" style="margin-top:24px;font-size:14px">PRESS ENTER</div>
     <button id="touch-next" data-action="confirm" type="button" style="pointer-events:auto;margin-top:16px;font:inherit;font-size:12px;padding:12px 18px;background:#ffd600;color:#111;border:3px solid #fff;border-radius:8px">CONTINUE</button>
   </div>

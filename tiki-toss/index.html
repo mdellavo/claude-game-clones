@@ -58,6 +58,18 @@ table.sc td.u{color:var(--teal);font-weight:800} table.sc td.o{color:var(--coral
 table.sc tr.tot td{border-top:2px solid rgba(23,58,53,.2);font-weight:800}
 .sc-wrap{overflow-x:auto;max-width:100%}
 h2{font:400 clamp(36px,8vw,56px) "Lilita One",sans-serif;margin:0;color:var(--coral);line-height:1}
+.lb{margin:12px auto 4px;max-width:340px}
+.lb-form{display:flex;gap:8px;align-items:center}
+.lb-form input{flex:1;min-width:0;font:800 17px Nunito,sans-serif;color:var(--ink);background:#fff;border:2px solid rgba(23,58,53,.2);border-radius:14px;padding:9px 12px;-webkit-user-select:text;user-select:text;touch-action:manipulation}
+.lb-form input:focus{outline:3px solid var(--sun);outline-offset:1px}
+.lb-form .btn{margin:0 0 5px}
+.lb-form .btn:disabled{opacity:.6;cursor:default}
+.lb-list{list-style:none;margin:8px 0 0;padding:0;font-size:14px;text-align:left;font-variant-numeric:tabular-nums}
+.lb-list li{display:grid;grid-template-columns:2em 1fr auto;gap:8px;padding:2px 8px;border-radius:8px}
+.lb-list li.me{background:rgba(18,181,166,.2);font-weight:800}
+.lb-list .r{opacity:.6;text-align:right}
+.lb-list .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-list .v{font-weight:800}
 @media (max-width:640px){
   #hole .n,#score .t{font-size:24px}
   #mini{width:104px;height:104px;top:calc(76px + env(safe-area-inset-top,0px))}
@@ -95,6 +107,7 @@ h2{font:400 clamp(36px,8vw,56px) "Lilita One",sans-serif;margin:0;color:var(--co
     <p class="small" id="keysTouch" hidden>Drag to aim, pick a curve, hold THROW and let go.</p>
     <button class="btn" id="startBtn" type="button">TEE OFF</button>
     <p class="small" id="best"></p>
+    <div class="lb" id="lbTitle" hidden><div class="tag">TOP ROUNDS</div><ol class="lb-list" id="lbTitleList"></ol></div>
   </div>
 </div>
 <div class="screen" id="card" hidden>
@@ -102,6 +115,12 @@ h2{font:400 clamp(36px,8vw,56px) "Lilita One",sans-serif;margin:0;color:var(--co
     <h2 id="cTitle">ROUND OVER</h2>
     <p id="cText"></p>
     <div class="sc-wrap"><table class="sc" id="cTable"></table></div>
+    <div class="lb" id="lbEnd" hidden>
+      <div class="tag">TOP ROUNDS</div>
+      <form class="lb-form" id="lbForm"><input id="lbName" type="text" maxlength="12" autocomplete="off" spellcheck="false" placeholder="Your name" aria-label="Your name"><button class="btn alt" id="lbSend" type="submit">SUBMIT</button></form>
+      <p class="small" id="lbNote" role="status"></p>
+      <ol class="lb-list" id="lbEndList"></ol>
+    </div>
     <button class="btn" id="againBtn" type="button">PLAY AGAIN</button>
   </div>
 </div>
@@ -120,6 +139,27 @@ const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t 
 const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 const isTouch = matchMedia('(pointer: coarse)').matches;
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'tiki-toss';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function seeded(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
 /* ================= RENDERER ================= */
@@ -706,7 +746,40 @@ function finishRound() {
   const row = (lbl, arr, cls) => `<tr${cls ? ` class="${cls}"` : ''}><th>${lbl}</th>${arr.map(v => `<td${typeof v === 'object' ? ` class="${v.c}"` : ''}>${typeof v === 'object' ? v.v : v}</td>`).join('')}</tr>`;
   $('cTable').innerHTML = row('HOLE', [...HOLES.map(h => h.n), 'TOT']) + row('PAR', [...HOLES.map(h => h.par), par]) + row('YOU', [...scores.map((s, i) => ({ v: s, c: s < HOLES[i].par ? 'u' : s > HOLES[i].par ? 'o' : '' })), { v: total, c: rel < 0 ? 'u' : rel > 0 ? 'o' : '' }], 'tot');
   $('card').hidden = false; setTimeout(() => $('againBtn').focus({ preventScroll: true }), 50);
+  lbOpen(total);
 }
+// leaderboard UI: the score is the round's total throws, so fewer is better
+let lbRun = 0, lbScore = 0, lbSent = false, lbBusy = false;
+function lbRender(list, rows, me) {
+  const par = HOLES.reduce((a, h) => a + h.par, 0); list.textContent = '';
+  rows.slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'); if (i + 1 === me) li.className = 'me';
+    for (const [c, t] of [['r', `${i + 1}.`], ['n', String(s.name)], ['v', `${s.score} (${fmtRel(s.score - par)})`]]) { const sp = document.createElement('span'); sp.className = c; sp.textContent = t; li.appendChild(sp); }
+    list.appendChild(li);
+  });
+}
+function lbOpen(total) {
+  if (!LB_URL) return;
+  const run = ++lbRun; lbScore = total; lbSent = lbBusy = false;
+  $('lbEnd').hidden = false; $('lbForm').hidden = false; $('lbSend').disabled = false; $('lbNote').textContent = ''; $('lbEndList').textContent = '';
+  $('lbName').value = String(store.get('tt-name', '')).slice(0, 12);
+  lbFetch().then(d => { if (run !== lbRun || lbSent) return; if (d && Array.isArray(d.scores)) lbRender($('lbEndList'), d.scores); else $('lbNote').textContent = 'Leaderboard offline.'; });
+}
+$('lbForm').addEventListener('submit', async e => {
+  e.preventDefault(); if (!LB_URL || lbSent || lbBusy) return;
+  const run = lbRun, name = $('lbName').value.trim().slice(0, 12); if (name) store.set('tt-name', name);
+  lbBusy = true; $('lbSend').disabled = true; $('lbNote').textContent = 'Sending…';
+  const d = await lbFetch({ name: name || 'ANON', score: lbScore });
+  if (run !== lbRun) return;
+  lbBusy = false;
+  if (!d || !Array.isArray(d.scores)) { $('lbSend').disabled = false; $('lbNote').textContent = 'Leaderboard offline. Your best round is still saved here.'; return; }
+  lbSent = true; $('lbForm').hidden = true;
+  $('lbNote').textContent = d.rank ? `You placed #${d.rank} at Paradise Cove.` : 'Not on the board this time.';
+  lbRender($('lbEndList'), d.scores, d.rank); $('againBtn').focus({ preventScroll: true });
+});
+// keep typing a name away from the game's window key handlers
+for (const ev of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(ev, e => e.stopPropagation());
+function lbTitle() { if (LB_URL) lbFetch().then(d => { if (d && Array.isArray(d.scores) && d.scores.length) { lbRender($('lbTitleList'), d.scores); $('lbTitle').hidden = false; } }); }
 function showBest() { const b = store.get('tt-best', null); $('best').textContent = b === null ? '' : `Best round: ${fmtRel(b)}`; }
 
 /* ================= LOOP ================= */
@@ -724,7 +797,8 @@ function frame(now) {
 }
 buildIsland(); buildFoliage(); buildBaskets(); resize(); showBest(); setMuted(AU.muted);
 disc.visible = false; trail.visible = false; guide.visible = false; landMark.visible = false;
-requestAnimationFrame(t => { last = t; frame(t); });
+// the title board is fetched after the first frame, so building the island cannot eat into its timeout
+requestAnimationFrame(t => { last = t; frame(t); lbTitle(); });
 window.__tt = { scene, camera, sun, get state() { return state; }, startRound, HOLES, get flight() { return flight; }, get lie() { return lie; }, set aim(v) { setAim(v, true); }, get aim() { return aim; }, set power(v) { power = v; }, setCurve, throwDisc, update, heightAt, keys, colliders, get scores() { return scores; }, get holeIdx() { return holeIdx; }, readyToThrow, get putting() { return putting; }, renderer };
 window.__ttReady = true;
 </script>

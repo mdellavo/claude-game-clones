@@ -44,6 +44,16 @@ h2{font-family:var(--logo);font-weight:400;font-size:44px;margin:0;line-height:1
 .fine{font-size:14px;margin:0;color:#b9c3dc}
 .big{font-family:var(--num);font-size:56px;line-height:1;font-variant-numeric:tabular-nums}
 .big span{color:var(--sunset)}
+#lb{display:flex;flex-direction:column;gap:10px;margin-top:6px;padding-top:14px;border-top:2px solid var(--dusk2)}
+#lbForm{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px}
+#lbName{flex:1 1 150px;min-width:0;max-width:220px;font-family:var(--num);font-size:16px;letter-spacing:.06em;color:var(--white);background:var(--dusk);border:2px solid var(--teal);border-radius:0;padding:8px 10px}
+#lbName:focus-visible{outline:2px solid var(--white);outline-offset:2px}
+#lbSend{font-size:20px;padding:6px 20px 8px;margin-right:8px}
+#lbList{list-style:none;margin:0;padding:0;font-family:var(--num);font-size:14px;letter-spacing:.04em;color:#dfe5f2;font-variant-numeric:tabular-nums}
+#lbList li{display:grid;grid-template-columns:2.4em 1fr auto;gap:10px;padding:2px 0}
+#lbList li span:first-child{color:var(--teal)}
+#lbList li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lbList li.me,#lbList li.me span:first-child{color:var(--sunset)}
 
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
 #board{position:absolute;left:50%;top:calc(10px + env(safe-area-inset-top,0px));transform:translateX(-50%) skewX(-10deg);display:flex;align-items:stretch;
@@ -137,6 +147,15 @@ body.touch #hint{bottom:calc(170px + env(safe-area-inset-bottom,0px))}
       <dt>RECORD</dt><dd id="stR">0–0</dd>
     </dl>
     <button class="btn" id="againBtn">Rematch</button>
+    <div id="lb" hidden>
+      <div class="eyebrow">SUNSET OPEN LEADERBOARD</div>
+      <p class="fine" id="lbMsg"></p>
+      <form id="lbForm" autocomplete="off">
+        <input id="lbName" type="text" maxlength="12" placeholder="YOUR NAME" aria-label="Name for the leaderboard" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="send">
+        <button class="btn" id="lbSend" type="submit">Post it</button>
+      </form>
+      <ol id="lbList"></ol>
+    </div>
   </div>
 </section>
 
@@ -167,6 +186,28 @@ const LEVELS = {
   pro: { dig: .92, react: .14, spikeSpeed: 15.5, err: .6, miss: .06, block: .7, speed: 6, leave: .85, serveErr: .05 },
 };
 let L = LEVELS.rookie;
+
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'spike-beach';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ------------------------------------------------------------------ renderer & scene
 const canvas = $('gl');
@@ -876,10 +917,52 @@ function matchOver(){
   $('overScore').innerHTML = `${a}<span> – </span>${b}`;
   $('stK').textContent = S.stats.k; $('stB').textContent = S.stats.b; $('stA').textContent = S.stats.a; $('stD').textContent = S.stats.d; $('stR').textContent = `${rec.w}–${rec.l}`;
   $('hud').hidden = true; $('touch').hidden = true; $('over').hidden = false; $('againBtn').focus();
+  lbOpen(lbRating(won, a, b));
   if (won){ cheer(); sfx('cheer'); }
   for (const p of TEAMS[won ? 0 : 1].players){ p.act = 'cheer'; p.actT = -99; }
   return true;
 }
+
+// ------------------------------------------------------------------ online leaderboard
+// Match rating, wins only: 100 per point of winning margin, doubled on PRO, plus 10 for every kill, block and ace.
+const lbRating = (won, a, b) => won ? (a - b) * 100 * (L === LEVELS.pro ? 2 : 1) + 10 * (S.stats.k + S.stats.b + S.stats.a) : 0;
+const lb = { run: 0, score: 0, sent: false, busy: false };
+function lbList(scores, rank){
+  const ol = $('lbList'); ol.textContent = '';
+  (Array.isArray(scores) ? scores : []).slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'); if (i + 1 === rank) li.className = 'me';
+    for (const t of [i + 1 + '.', String(s.name), Number(s.score).toLocaleString('en-US')]){ const c = document.createElement('span'); c.textContent = t; li.append(c); }
+    ol.append(li);
+  });
+  ol.hidden = !ol.children.length;
+}
+function lbOpen(score){
+  if (!LB_URL) return;
+  const run = ++lb.run; lb.score = score; lb.sent = lb.busy = false;
+  $('lb').hidden = false; $('lbForm').hidden = score <= 0; $('lbSend').disabled = false; lbList([]);
+  let name = ''; try { name = localStorage.getItem('spike89-name') || ''; } catch (e){}
+  $('lbName').value = name.slice(0, 12);
+  const msg = score > 0 ? `Match rating ${score.toLocaleString('en-US')}. 100 a point of winning margin, doubled on PRO, plus 10 per kill, block and ace.` : 'Beat the Surf Kings to post a match rating.';
+  $('lbMsg').textContent = msg;
+  lbFetch().then((r) => { if (run !== lb.run || lb.sent) return; if (r) lbList(r.scores); else $('lbMsg').textContent = msg + ' Leaderboard is offline right now.'; });
+}
+async function lbSubmit(){
+  if (lb.sent || lb.busy || lb.score <= 0) return;
+  const name = $('lbName').value.trim().slice(0, 12);
+  if (!name){ $('lbName').focus(); return; }
+  try { localStorage.setItem('spike89-name', name); } catch (e){}
+  const run = lb.run, score = lb.score; lb.busy = true; $('lbSend').disabled = true;
+  const r = await lbFetch({ name, score });
+  if (run !== lb.run) return;
+  lb.busy = false;
+  if (!r){ $('lbSend').disabled = false; $('lbMsg').textContent = `Match rating ${score.toLocaleString('en-US')}. Leaderboard is offline. Try again in a bit.`; return; }
+  lb.sent = true; $('lbForm').hidden = true;
+  $('lbMsg').textContent = r.rank ? `Match rating ${score.toLocaleString('en-US')}. You are #${r.rank} on the beach.` : `Match rating ${score.toLocaleString('en-US')}. Not enough to crack the top 50 this time.`;
+  lbList(r.scores, r.rank); $('againBtn').focus();
+}
+$('lbForm').addEventListener('submit', (e) => { e.preventDefault(); lbSubmit(); });
+// keep typing away from the game's window-level key handling (Enter restarts, Space is swallowed)
+for (const ev of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(ev, (e) => e.stopPropagation());
 
 // ------------------------------------------------------------------ main loop
 let last = performance.now();

@@ -30,6 +30,96 @@ function save(key, v) {
   }
 }
 
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'xcom';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const LB_NAME_KEY = 'xcom-crash-lbname-v1';
+
+// Debrief section: top 10 mission scores, plus a submit form when this mission scored
+// above zero (the board only takes non-negative integers). Null while the feature is off.
+function leaderboardPanel(score) {
+  if (!LB_URL) return null;
+  const status = h('div', { class: 'small' }, 'Contacting X-COM command...');
+  const table = h('table', {});
+  const show = (data, rank) => {
+    if (!data || !Array.isArray(data.scores)) return false;
+    clear(table);
+    data.scores.slice(0, 10).forEach((e, i) => {
+      const cls = i + 1 === rank ? ' hi' : '';
+      table.append(h('tr', {},
+        h('td', { class: 'num' + cls }, i + 1),
+        h('td', { class: cls }, String(e.name)),
+        h('td', { class: 'num' + cls }, Number(e.score) || 0)));
+    });
+    return true;
+  };
+  const el = h('div', { class: 'lb' }, h('h3', {}, 'Global Ranking'));
+  if (Number.isInteger(score) && score > 0) {
+    let sent = false;
+    const name = h('input', {
+      class: 'lb-name', type: 'text', maxLength: 12, value: String(load(LB_NAME_KEY, '') || '').slice(0, 12),
+      placeholder: 'Commander', autocomplete: 'off', spellcheck: false, 'aria-label': 'Commander name',
+    });
+    const btn = h('button', {}, 'Submit Score');
+    const form = h('div', { class: 'lb-form' }, name, btn);
+    const submit = async () => {
+      if (sent) return;
+      sent = true;
+      btn.disabled = true;
+      const n = name.value.trim().slice(0, 12);
+      save(LB_NAME_KEY, n);
+      status.textContent = 'Transmitting...';
+      const data = await lbFetch({ name: n, score });
+      if (!show(data, data && data.rank)) {
+        // nothing came back, so let the commander try again
+        sent = false;
+        btn.disabled = false;
+        status.textContent = 'Global ranking offline - score not sent.';
+        return;
+      }
+      form.remove();
+      status.textContent = data.rank ? `Score ${score} filed at rank #${data.rank}.` : `Score ${score} did not make the ranking.`;
+    };
+    // keep typing away from the game's window-level key handlers
+    for (const ev of ['keydown', 'keyup', 'keypress']) {
+      name.addEventListener(ev, (e) => {
+        e.stopPropagation();
+        if (ev === 'keydown' && e.key === 'Enter') {
+          e.preventDefault();
+          submit();
+        }
+      });
+    }
+    btn.addEventListener('click', submit);
+    el.append(form);
+  }
+  el.append(status, table);
+  lbFetch().then((data) => {
+    if (table.firstChild) return; // a submit already filled the board
+    if (!show(data)) status.textContent = 'Global ranking offline.';
+    else status.textContent = data.scores.length ? 'Top mission scores' : 'No scores filed yet.';
+  });
+  return el;
+}
+
 export class App {
   constructor(root) {
     this.root = root;
@@ -369,6 +459,7 @@ export class App {
           ))),
         ),
       ),
+      leaderboardPanel(res.score),
       h('div', { class: 'row', style: { marginTop: '16px' } },
         h('div', { class: 'spacer' }),
         h('button', { onclick: () => this.showTitle() }, 'Main Menu'),

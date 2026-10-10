@@ -16,3 +16,10 @@ npm-debug.log*
 
 # GitHub Pages build output
 _site/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+infra/**/build/

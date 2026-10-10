@@ -142,6 +142,22 @@ kbd{font:inherit;font-size:14px;font-weight:600;background:rgba(236,230,214,.1);
 .tally dd{margin:2px 0 0;font-size:30px;font-weight:600;line-height:1}
 .tally dd.hi{color:var(--amber)}
 
+/* ---------- online leaderboard (end screen) ---------- */
+.lb{padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px}
+.lb h3{font-family:var(--display);font-weight:400;font-size:24px;margin:0;letter-spacing:.03em}
+.lbForm{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0}
+.lbForm input{flex:1 1 150px;min-width:0;max-width:260px;font:inherit;font-size:19px;font-weight:600;letter-spacing:.06em;color:var(--bone);
+  background:rgba(0,0,0,.55);border:1px solid rgba(236,230,214,.35);border-radius:0;padding:8px 11px 9px}
+.lbForm input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.lbForm .btn:disabled{opacity:.45;cursor:default;background:transparent;color:var(--bone)}
+.lbList{list-style:none;margin:0;padding:0;font-size:17px;font-variant-numeric:tabular-nums}
+.lbList li{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:baseline;padding:4px 8px;border-top:1px solid rgba(236,230,214,.1)}
+.lbList li i{font-style:normal;color:var(--bone2)}
+.lbList li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.05em}
+.lbList li b{font-weight:600}
+.lbList li.me{background:rgba(240,169,47,.13);color:var(--amber)}
+.lbList li.me i{color:var(--amber)}
+
 /* ---------- touch ---------- */
 #touch{position:fixed;inset:auto 0 0 0;height:210px;z-index:8;pointer-events:none;display:none}
 body.touch #touch{display:block}
@@ -266,6 +282,16 @@ body.touch #mapBox{bottom:calc(178px + env(safe-area-inset-bottom,0px))}
     <div class="row">
       <button class="btn" id="again" type="button">AGAIN</button>
       <button class="btn ghost" id="menu" type="button">PICK ANOTHER</button>
+    </div>
+    <div class="lb panel" id="lb" hidden>
+      <h3>Names on the wall</h3>
+      <form class="lbForm" id="lbForm" autocomplete="off">
+        <input id="lbName" type="text" maxlength="12" placeholder="Your name" aria-label="Name for the leaderboard"
+          autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="send">
+        <button class="btn ghost" id="lbSend" type="submit">CARVE IT IN</button>
+      </form>
+      <p class="fine" id="lbNote"></p>
+      <ol class="lbList" id="lbList" hidden></ol>
     </div>
   </div>
 </div>
@@ -2244,6 +2270,90 @@ function bestScore(v) {
   } catch (e) { /* private mode */ }
   return 0;
 }
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'rotgate';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const LB = { run: 0, sent: false, busy: false, score: 0 };
+function lbName(v) {
+  try {
+    if (v === undefined) return localStorage.getItem('rotgate.name') || '';
+    localStorage.setItem('rotgate.name', v);
+  } catch (e) { /* private mode */ }
+  return '';
+}
+function lbList(scores, rank) {
+  const ol = $('lbList');
+  ol.textContent = '';
+  if (!scores || !Array.isArray(scores.scores)) { ol.hidden = true; return false; }
+  scores.scores.slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'), n = document.createElement('i'), nm = document.createElement('span'), sc = document.createElement('b');
+    n.textContent = i + 1;
+    nm.textContent = String(s.name);
+    sc.textContent = fmt(Number(s.score) || 0);
+    if (i + 1 === rank) li.className = 'me';
+    li.append(n, nm, sc);
+    ol.appendChild(li);
+  });
+  ol.hidden = !ol.children.length;
+  return true;
+}
+/* called when the end screen opens: reset the form for this run and read the board */
+async function lbOpen() {
+  if (!LB_URL) return;
+  const run = ++LB.run;
+  LB.sent = LB.busy = false;
+  LB.score = Math.max(0, Math.round(RUN.score));
+  $('lb').hidden = false;
+  $('lbForm').hidden = LB.score <= 0;
+  $('lbSend').disabled = false;
+  $('lbName').disabled = false;
+  $('lbName').value = lbName();
+  $('lbList').hidden = true;
+  $('lbNote').textContent = 'Reading the wall…';
+  const res = await lbFetch();
+  if (run !== LB.run || LB.sent || LB.busy) return;
+  if (!lbList(res)) $('lbNote').textContent = 'The wall is out of reach — leaderboard offline.';
+  else $('lbNote').textContent = res.scores.length ? 'The ten who got deepest.' : 'Nobody on the wall yet. Be the first.';
+}
+async function lbSubmit() {
+  if (!LB_URL || LB.sent || LB.busy || state !== 'over' || LB.score <= 0) return;
+  const run = LB.run;
+  const name = $('lbName').value.trim().slice(0, 12) || 'ANON';
+  lbName(name);
+  LB.busy = true;
+  $('lbSend').disabled = true;
+  $('lbNote').textContent = 'Carving…';
+  const res = await lbFetch({ name, score: LB.score });
+  if (run !== LB.run) return;
+  LB.busy = false;
+  if (!lbList(res, res && res.rank)) {
+    $('lbSend').disabled = false;
+    $('lbNote').textContent = 'Leaderboard offline — score not sent. Try again?';
+    return;
+  }
+  LB.sent = true;
+  $('lbName').disabled = true;
+  $('lbNote').textContent = res.rank ? 'You are #' + res.rank + ' on the wall with ' + fmt(LB.score) + '.'
+    : 'Not deep enough for the wall this time — ' + fmt(LB.score) + '.';
+}
 function buildFloor() {
   L = genLevel(RUN.floor);
   buildWorld();
@@ -2351,6 +2461,7 @@ function endRun(won) {
   E.hud.hidden = true;
   document.body.classList.remove('aiming');
   ambSet(.05);
+  lbOpen();
 }
 function die() {
   if (state !== 'play') return;
@@ -2463,6 +2574,9 @@ function boot() {
   $('interBtn').addEventListener('click', advance);
   $('resume').addEventListener('click', () => pause(false));
   $('quit').addEventListener('click', () => { endRun(false); });
+  $('lbForm').addEventListener('submit', e => { e.preventDefault(); lbSubmit(); });
+  /* typing a name must not throw flares, mute or pause */
+  ['keydown', 'keyup', 'keypress'].forEach(t => $('lbName').addEventListener(t, e => e.stopPropagation()));
   requestAnimationFrame(frame);
 }
 boot();

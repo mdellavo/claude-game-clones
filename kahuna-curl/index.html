@@ -71,6 +71,17 @@ h2{font-family:var(--label);font-weight:400;font-size:38px;margin:0;line-height:
 #tStall{right:98px;bottom:calc(20px + env(safe-area-inset-bottom,0px))}
 #tPump{right:22px;bottom:calc(20px + env(safe-area-inset-bottom,0px))}
 #tGrab{right:60px;bottom:calc(96px + env(safe-area-inset-bottom,0px));font-size:14px}
+#lb{display:flex;flex-direction:column;gap:8px;border-top:3px dashed var(--ink);padding-top:14px}
+#lbForm{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+#lbName{flex:1 1 120px;min-width:0;font-family:var(--body);font-size:17px;font-weight:700;color:var(--ink);background:#fff;border:3px solid var(--ink);border-radius:10px;padding:9px 12px}
+#lbName:focus-visible{outline:3px dashed var(--deep);outline-offset:3px}
+#lbForm .btn{font-size:17px;padding:8px 18px}
+#lbList{list-style:none;margin:0;padding:0;font-size:15px}
+#lbList li{display:grid;grid-template-columns:2.2em 1fr auto;gap:8px;padding:2px 0}
+#lbList li span:first-child{font-family:var(--label);color:var(--deep)}
+#lbList li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lbList li span:last-child{font-family:var(--label);font-variant-numeric:tabular-nums}
+#lbList li.me{color:var(--hibiscus)}
 body.touch #pocket{bottom:calc(100px + env(safe-area-inset-bottom,0px))}
 
 @media (max-width:640px){
@@ -130,6 +141,15 @@ body.touch #pocket{bottom:calc(100px + env(safe-area-inset-bottom,0px))}
       <dt>BEST SCORE</dt><dd id="sBest">0</dd>
     </dl>
     <button class="btn" id="againBtn">Paddle out again</button>
+    <div id="lb" hidden>
+      <div class="eyebrow">MANGO REEF LEADERBOARD</div>
+      <form id="lbForm">
+        <input id="lbName" type="text" maxlength="12" placeholder="Your name" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" aria-label="Name for the leaderboard">
+        <button class="btn" id="lbSend" type="submit">Post score</button>
+      </form>
+      <p class="fine" id="lbMsg" aria-live="polite"></p>
+      <ol id="lbList"></ol>
+    </div>
   </div>
 </section>
 
@@ -676,6 +696,67 @@ function trick(name, pts, big = false){
 function loadBest(){ try { return parseInt(localStorage.getItem('kahuna-best')) || 0; } catch (e){ return 0; } }
 function saveBest(v){ try { localStorage.setItem('kahuna-best', String(v)); } catch (e){} }
 
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'kahuna-curl';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+// lbRun changes every heat so a slow reply from an earlier one is dropped; lbBusy/lbSent stop double posts.
+let lbRun = 0, lbScore = 0, lbBusy = false, lbSent = false;
+function lbList(scores, rank){
+  const rows = (Array.isArray(scores) ? scores : []).slice(0, 10).map((s, i) => {
+    const li = document.createElement('li'); if (i + 1 === rank) li.className = 'me';
+    for (const t of [`${i + 1}.`, String(s.name), Number(s.score).toLocaleString()]){ const c = document.createElement('span'); c.textContent = t; li.appendChild(c); }
+    return li;
+  });
+  $('lbList').replaceChildren(...rows);
+}
+function lbOpen(score){
+  if (!LB_URL) return;
+  const run = ++lbRun; lbScore = score; lbBusy = lbSent = false;
+  let name = ''; try { name = localStorage.getItem('kahuna-name') || ''; } catch (e){}
+  $('lbName').value = name; $('lbSend').disabled = false; $('lbForm').hidden = score <= 0;
+  $('lbMsg').textContent = 'Checking the board…'; lbList([]); $('lb').hidden = false;
+  lbFetch().then((r) => {
+    if (run !== lbRun || lbBusy || lbSent) return;
+    if (!r){ $('lbMsg').textContent = 'Leaderboard is offline right now.'; return; }
+    lbList(r.scores); $('lbMsg').textContent = r.scores?.length ? 'Top 10 on the reef:' : 'No scores yet. Be the first!';
+  });
+}
+async function lbSubmit(){
+  if (!LB_URL || lbBusy || lbSent || lbScore <= 0) return;
+  const run = lbRun, name = $('lbName').value.trim().slice(0, 12);
+  if (!name){ $('lbMsg').textContent = 'Type a name first.'; $('lbName').focus(); return; }
+  try { localStorage.setItem('kahuna-name', name); } catch (e){}
+  lbBusy = true; $('lbSend').disabled = true; $('lbMsg').textContent = 'Posting…';
+  const r = await lbFetch({ name, score: lbScore });
+  if (run !== lbRun) return;
+  lbBusy = false;
+  if (!r){ $('lbSend').disabled = false; $('lbMsg').textContent = 'Leaderboard is offline. Try again in a bit.'; return; }
+  lbSent = true; $('lbForm').hidden = true; lbList(r.scores, r.rank);
+  $('lbMsg').textContent = r.rank ? `You're #${r.rank} on the reef!` : 'Not a top-50 heat this time.';
+  $('againBtn').focus();
+}
+$('lbForm').addEventListener('submit', (e) => { e.preventDefault(); lbSubmit(); });
+// keep typing (and Enter/Space) in the name form away from the game's window key handlers
+for (const ev of ['keydown', 'keyup']) $('lbForm').addEventListener(ev, (e) => e.stopPropagation());
+
 // ------------------------------------------------------------------ game flow
 function dropIn(first){
   S.x = S.breakX + 24; S.h = .88; S.th = -.75; S.v = 17; S.mode = 'surf'; S.spin = 0; S.inTube = false; S.tube = 0;
@@ -688,6 +769,7 @@ function startGame(){
   for (const th of things) removeThing(th); things = [];
   Object.assign(S, { state: 'play', time: HEAT, score: 0, combo: 0, boards: 3, tubeBest: 0, bigAir: 0, tricks: 0, vb: 15 });
   S.nextSpawn = S.breakX + 60;
+  lbRun++; $('lb').hidden = true;
   $('title').hidden = true; $('over').hidden = true; $('hud').hidden = false;
   if (isTouch){ $('touch').hidden = false; document.body.classList.add('touch'); }
   updateBoards(); dropIn(true);
@@ -705,6 +787,7 @@ function endHeat(why){
   $('sTricks').textContent = S.tricks; $('sBest').textContent = best.toLocaleString();
   $('hud').hidden = true; $('touch').hidden = true; $('over').hidden = false; $('againBtn').focus();
   surfer.root.visible = false;
+  lbOpen(Math.floor(S.score));
 }
 function wipe(reason){
   if (S.mode === 'wipe') return;

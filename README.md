@@ -55,6 +55,41 @@ node tools/build-site.mjs && python3 -m http.server 8080 -d _site
 
 Every game detects a touch screen and shows controls to match: a thumbstick and action buttons for the 3D games, a D-pad and A/B buttons for the NES-style ones, and a camera pad for X-COM's battlescape. The published claude.ai versions are the easiest way to play on a phone. To play a local copy, serve it as above and open the address on your phone over the same network.
 
+## Leaderboard
+
+Most games can post scores to a shared online leaderboard: one AWS Lambda behind a Function URL, storing each game's top 50 in a single DynamoDB table. The handler and the Terraform config live in `infra/leaderboard/`. Each wired game holds the API's address in a `const LB_URL = '…';` line. Set it to `''` and the game makes no requests and shows no leaderboard.
+
+To deploy it you need Terraform 1.5 or newer and AWS credentials in your environment (for example `aws configure`, or `AWS_PROFILE`).
+
+```sh
+cd infra/leaderboard
+terraform init
+terraform apply -var 'allowed_origins=["https://mdellavo.github.io"]'
+```
+
+`allowed_origins` is the list of sites allowed to call the API; add `"http://localhost:8080"` to test locally. To avoid retyping it, put it in a `terraform.tfvars` file, which is gitignored. The other variables have defaults:
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `region` | `us-east-1` | AWS region |
+| `games` | every game folder | Folders allowed to have a board; add new games here |
+| `lower_is_better` | the timed games and Tiki Toss | Games where the smallest number ranks first |
+| `max_score` | `1000000000` | Scores above this are rejected |
+| `reserved_concurrency` | `5` | Caps simultaneous Lambda runs, and so the bill. Set to `-1` if the apply fails on your account's concurrency quota |
+| `alert_email` | none | If set, emails you when the month's AWS bill passes $1 |
+
+The apply prints the API's `url`. The games in this repo already point at the deployed one; if you deploy your own, swap it in from the repo root:
+
+```sh
+URL=$(terraform -chdir=infra/leaderboard output -raw url)
+grep -rlE --include='*.html' --include='*.js' --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=_site "const LB_URL = '[^']*';" . \
+  | xargs perl -pi -e "s|const LB_URL = '[^']*';|const LB_URL = '$URL';|"
+```
+
+Pushing to `main` then rebuilds the GitHub Pages site with the leaderboard on. The claude.ai artifacts are separate copies and need republishing to pick it up; for Radio Rally 3D run `node radio-rally-3d/tools/build-artifact.mjs` first.
+
+Terraform state is kept locally in `infra/leaderboard/terraform.tfstate` and is gitignored, so keep that file if you want to change or remove the deployment later. `terraform destroy` with the same `-var` removes everything, including the stored scores.
+
 ## Ideas
 - mountain biking game
 - pilotwings games

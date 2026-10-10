@@ -72,6 +72,19 @@ h2{font-family:var(--display);font-weight:400;font-size:40px;line-height:1;margi
   font-family:var(--display);font-size:18px;color:var(--paper);background:var(--blood);border:2px solid var(--paper)}
 body.touch #hullBox{bottom:calc(160px + env(safe-area-inset-bottom,0px))}
 
+#lbForm{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin:0}
+#lbForm label{flex:1 1 100%;font-family:var(--display);font-size:15px;color:var(--blood)}
+#lbName{flex:1 1 140px;min-width:0;font-family:var(--body);font-size:19px;color:var(--ink);background:rgba(255,255,255,.3);border:1px solid var(--ink);border-radius:0;padding:7px 10px 8px}
+#lbName:focus-visible{outline:2px solid var(--blood);outline-offset:2px}
+#lbSend{align-self:center;font-size:18px;padding:7px 16px 9px;margin:5px}
+#lb{display:flex;flex-direction:column;gap:8px}
+#lbList{list-style:none;margin:0;padding:0;font-size:16px;font-variant-numeric:tabular-nums}
+#lbList li{display:grid;grid-template-columns:2em 1fr auto;gap:10px;padding:1px 0;border-bottom:1px dotted rgba(42,28,18,.35)}
+#lbList li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lbList li.me{color:var(--blood)}
+.screen.lb{align-items:flex-start}
+.screen.lb .leaf{margin-top:auto;margin-bottom:auto}
+
 @media (max-width:640px){ .leaf{margin-left:0;padding:22px} .screen{align-items:flex-start} .lede{font-size:17px} }
 @media (prefers-reduced-motion:reduce){#msg,#hurt{transition:none}}
 </style>
@@ -130,7 +143,17 @@ body.touch #hullBox{bottom:calc(160px + env(safe-area-inset-bottom,0px))}
       <dt>Arms severed</dt><dd id="eSevered">0</dd>
       <dt>Best time</dt><dd id="eBest">none</dd>
     </dl>
+    <form id="lbForm" hidden>
+      <label for="lbName">Sign the harbour log</label>
+      <input id="lbName" type="text" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Your name">
+      <button class="btn" id="lbSend" type="submit">Sign</button>
+    </form>
     <button class="btn" id="againBtn">Row out again</button>
+    <div id="lb" hidden>
+      <div class="eyebrow">Harbour log · fastest kills</div>
+      <p class="fine" id="lbNote"></p>
+      <ol id="lbList"></ol>
+    </div>
   </div>
 </section>
 
@@ -152,6 +175,28 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
 const R = (a, b) => a + Math.random() * (b - a);
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'kraken-squall';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ------------------------------------------------------------------ renderer
 const canvas = $('gl');
@@ -602,6 +647,44 @@ function updateHUD(){
 function loadBest(){ try { return parseFloat(localStorage.getItem('kraken-best')) || 0; } catch (e){ return 0; } }
 function saveBest(v){ try { localStorage.setItem('kraken-best', String(v)); } catch (e){} }
 
+// Harbour log: the online board of fastest kills. The score is the kill time in milliseconds, so lower is better.
+const lb = { run: 0, ms: 0, sent: false };
+const lbTime = (ms) => `${fmt(ms / 1000)}.${Math.floor(ms / 100) % 10}`;
+function loadName(){ try { return localStorage.getItem('kraken-name') || ''; } catch (e){ return ''; } }
+function saveName(v){ try { localStorage.setItem('kraken-name', v); } catch (e){} }
+function lbRender(res, rank){
+  const list = $('lbList'); list.textContent = '';
+  const scores = res && Array.isArray(res.scores) ? res.scores.slice(0, 10) : null;
+  if (!scores){ $('lbNote').textContent = 'The harbour log is out of reach (offline).'; return false; }
+  scores.forEach((s, i) => {
+    const li = document.createElement('li'); if (i + 1 === rank) li.className = 'me';
+    for (const t of [`${i + 1}.`, String(s.name), lbTime(Number(s.score) || 0)]){ const sp = document.createElement('span'); sp.textContent = t; li.appendChild(sp); }
+    list.appendChild(li);
+  });
+  $('lbNote').textContent = rank ? `Your kill is entered at number ${rank}.` : rank === null ? 'Your kill was not among the fifty fastest.' : scores.length ? '' : 'No boat has signed the log yet.';
+  return true;
+}
+function lbOpen(won){
+  if (!LB_URL) return;
+  const run = ++lb.run; lb.ms = Math.round(S.time * 1000); lb.sent = false;
+  $('end').classList.add('lb'); $('lb').hidden = false; $('lbForm').hidden = !won; $('lbSend').disabled = false;
+  $('lbName').value = loadName(); $('lbList').textContent = ''; $('lbNote').textContent = 'Reading the harbour log…';
+  lbFetch().then((res) => { if (run === lb.run && !lb.sent) lbRender(res); });
+}
+function lbClose(){ lb.run++; $('lb').hidden = true; $('lbForm').hidden = true; }
+async function lbSubmit(){
+  if (lb.sent || S.state !== 'won') return;
+  const run = lb.run, name = $('lbName').value.trim().slice(0, 12) || 'ANON';
+  lb.sent = true; $('lbSend').disabled = true; saveName(name); $('lbNote').textContent = 'Signing the log…';
+  const res = await lbFetch({ name, score: lb.ms });
+  if (run !== lb.run) return;
+  if (lbRender(res, res ? res.rank ?? null : undefined)) $('lbForm').hidden = true;
+  else { lb.sent = false; $('lbSend').disabled = false; }
+}
+$('lbForm').addEventListener('submit', (e) => { e.preventDefault(); lbSubmit(); });
+// Typing a name must not row, chop, pause or mute.
+for (const type of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(type, (e) => e.stopPropagation());
+
 // ------------------------------------------------------------------ gameplay
 function hurt(n, from){
   if (S.state !== 'play') return;
@@ -617,7 +700,7 @@ function startGame(){
   squid.state = 'deep'; squid.group.visible = false; squid.timer = 0;
   for (const b of barrels) scene.remove(b.g); barrels.length = 0;
   H.live = false; H.stuck = null; harpoon.visible = rope.visible = false;
-  $('title').hidden = true; $('end').hidden = true; $('hud').hidden = false; $('cross').hidden = isTouch;
+  $('title').hidden = true; $('end').hidden = true; lbClose(); $('hud').hidden = false; $('cross').hidden = isTouch;
   if (isTouch){ $('touch').hidden = false; document.body.classList.add('touch'); }
   sfx('bell'); if (droneGain) droneGain.gain.value = .35;
   message('Something circles beneath the keel', 'Row with W A S D · aim with the mouse · click to throw', 4.5);
@@ -642,6 +725,7 @@ function finish(won){
     $('endText').textContent = 'The hull split under the weight of its arms, and the Perseverance went down into the dark. Only the lantern was seen for a while longer, sinking.';
     const best = loadBest(); $('eBest').textContent = best ? fmt(best) : 'none';
   }
+  lbOpen(won);
   $('eTime').textContent = fmt(S.time); $('eThrown').textContent = S.thrown; $('eHits').textContent = `${S.hits}${S.thrown ? ` (${Math.round(S.hits / S.thrown * 100)}%)` : ''}`; $('eSevered').textContent = S.severed;
 }
 function lose(){ if (S.state !== 'play') return; release(); finish(false); message('The hull gives way', '', 3); sfx('slam'); }

@@ -533,6 +533,24 @@ table.roster tr:hover td {
   font-family: var(--title);
   font-size: 32px;
 }
+.lb {
+  margin-top: 14px;
+  max-width: 420px;
+}
+.lb-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.lb-name {
+  flex: 1 1 140px;
+  min-width: 0;
+  max-width: 220px;
+  padding: 4px 6px;
+  -webkit-user-select: text;
+  user-select: text;
+}
 
 @media (max-width: 760px) {
   body {

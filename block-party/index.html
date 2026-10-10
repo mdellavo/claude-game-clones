@@ -52,6 +52,15 @@ h2{font-family:var(--disp);font-weight:400;font-size:clamp(40px,9vw,84px);line-h
 .dmg i{height:8px;background:var(--lawn);border-radius:4px;display:block}
 .dmg span:last-child{text-align:right;font-variant-numeric:tabular-nums;color:var(--peach)}
 .err{color:var(--gold)}
+.lb-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.lb-name{flex:1 1 150px;min-width:0;max-width:260px;font:700 16px var(--ui);background:rgba(251,246,234,.08);color:var(--picket);border:2px solid rgba(251,246,234,.4);border-radius:999px;padding:9px 16px;user-select:text;-webkit-user-select:text}
+.lb-name:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+.lb-note{font-size:14px;color:var(--peach)}
+.lb-list{list-style:none;margin:0;padding:0;display:grid;gap:3px;font-size:14px;font-variant-numeric:tabular-nums}
+.lb-list li{display:grid;grid-template-columns:30px 1fr auto;gap:8px}
+.lb-list li span:first-child{color:var(--peach)}
+.lb-list li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:pre}
+.lb-list li.me{color:var(--gold);font-weight:700}
 
 /* HUD */
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5;font-variant-numeric:tabular-nums}
@@ -180,6 +189,12 @@ h2{font-family:var(--disp);font-weight:400;font-size:clamp(40px,9vw,84px);line-h
     <p class="lede" id="endLede"></p>
     <div class="stats" id="endStats"></div>
     <div class="card"><div class="hd">Damage by gear</div><div class="dmg" id="endDmg"></div></div>
+    <div class="card" id="lbCard" hidden>
+      <div class="hd">Longest nights on the block</div>
+      <div class="lb-form" id="lbForm"><input class="lb-name" id="lbName" maxlength="12" placeholder="Your name" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" aria-label="Name for the leaderboard"><button class="ghost" id="lbSend">Post my night</button></div>
+      <div class="lb-note" id="lbNote" hidden></div>
+      <ol class="lb-list" id="lbList" hidden></ol>
+    </div>
     <div class="row"><button class="go" id="againBtn">ONE MORE NIGHT</button><button class="ghost" id="titleBtn">Title</button></div>
   </div>
 </section>
@@ -210,6 +225,28 @@ const store = {
 };
 const RUN = 600; // seconds from dusk to dawn
 const BOSS_AT = 420;
+
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'block-party';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /* ================================================= renderer */
 const canvas = $('gl');
@@ -1095,8 +1132,45 @@ function showEnd() {
   for (const [v, l] of [[fmt(T), 'Survived'], [pl.kills, 'Gremlins KO\'d'], [pl.lvl, 'Level'], [Object.keys(owned).length, 'Gear and perks']]) { const d = document.createElement('div'); d.className = 'stat'; d.innerHTML = '<b></b><span></span>'; d.querySelector('b').textContent = v; d.querySelector('span').textContent = l; st.appendChild(d); }
   const dm = $('endDmg'); dm.innerHTML = ''; const entries = Object.entries(dmgBy).sort((a, b) => b[1] - a[1]); const top = entries[0] ? entries[0][1] : 1;
   for (const [k, v] of entries.slice(0, 7)) { const nm = ITEMS[Object.keys(ITEMS).find(i => ITEMS[i].name === k)]?.name || k; const row = document.createElement('div'); row.innerHTML = '<span></span><span><i></i></span><span></span>'; row.children[0].textContent = nm; row.querySelector('i').style.width = (v / top * 100) + '%'; row.children[2].textContent = Math.round(v); dm.appendChild(row); }
-  $('end').hidden = false; renderBest();
+  $('end').hidden = false; renderBest(); lbOpen(score);
 }
+// Leaderboard card on the end screen. The score is whole seconds survived (600 = sunrise).
+let lbRun = 0, lbScore = 0, lbSent = false;
+function lbNote(t) { $('lbNote').textContent = t; $('lbNote').hidden = !t; }
+function lbRender(scores, rank) {
+  const ol = $('lbList'); ol.textContent = '';
+  scores.slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'); if (i + 1 === rank) li.className = 'me';
+    for (const t of [(i + 1) + '.', String(s.name), fmt(+s.score || 0)]) { const sp = document.createElement('span'); sp.textContent = t; li.appendChild(sp); }
+    ol.appendChild(li);
+  });
+  ol.hidden = !ol.children.length;
+}
+function lbOpen(score) {
+  if (!LB_URL) return;
+  const run = ++lbRun; lbScore = score; lbSent = false;
+  $('lbCard').hidden = false; $('lbForm').hidden = false; $('lbSend').disabled = false; $('lbList').hidden = true;
+  $('lbName').value = String(store.get('bp-name', '')).slice(0, 12); lbNote('Checking the board…');
+  lbFetch().then(d => {
+    if (run !== lbRun || lbSent) return;
+    if (d && Array.isArray(d.scores)) { lbRender(d.scores, 0); lbNote(d.scores.length ? '' : 'Nobody on the board yet.'); }
+    else lbNote('Leaderboard is offline right now.');
+  });
+}
+async function lbSubmit() {
+  if (lbSent || !LB_URL) return;
+  const name = $('lbName').value.trim().slice(0, 12);
+  if (!name) { lbNote('Type a name first.'); $('lbName').focus(); return; }
+  const run = lbRun; lbSent = true; $('lbSend').disabled = true; store.set('bp-name', name); lbNote('Posting…');
+  const d = await lbFetch({ name, score: lbScore });
+  if (run !== lbRun) return;
+  if (!d || !Array.isArray(d.scores)) { lbSent = false; $('lbSend').disabled = false; lbNote('Leaderboard is offline. Try again in a bit.'); return; }
+  $('lbForm').hidden = true; lbRender(d.scores, d.rank);
+  lbNote(d.rank ? `You are #${d.rank} on the block with ${fmt(lbScore)}.` : `${fmt(lbScore)} did not make the board this time.`);
+}
+$('lbSend').onclick = lbSubmit;
+// Keep typing away from the game's window key handlers (M mutes, P pauses).
+for (const ev of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(ev, e => { e.stopPropagation(); if (ev === 'keydown' && e.key === 'Enter') { e.preventDefault(); lbSubmit(); } });
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 function renderBest() { const b = store.get('bp-best', null); $('best').textContent = b ? `Best night: ${b.w ? 'made it to sunrise' : 'lasted ' + fmt(b.t)} with ${b.k} KOs` : ''; }
 function toTitle() { state = 'title'; for (const id of ['end', 'pause', 'hud', 'lvlup']) $(id).hidden = true; $('title').hidden = false; if (ac && ac.state === 'suspended') ac.resume(); reset(); renderBest(); }

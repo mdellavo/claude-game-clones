@@ -46,6 +46,15 @@ h2{font-family:var(--shout);font-weight:400;font-size:52px;margin:0;line-height:
 .btn:focus-visible{outline:3px dashed var(--cyan);outline-offset:6px}
 .fine{font-size:13px;margin:0;color:#a9a4bd}
 .big{font-family:var(--mono);font-size:42px;color:var(--yellow);text-shadow:3px 3px 0 var(--pink);font-variant-numeric:tabular-nums}
+#lb{display:flex;flex-direction:column;gap:9px;margin-top:6px;padding:12px 0 22px;border-top:2px dashed #3e3a4f}
+#lbForm{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin:0}
+#lbName{flex:1 1 150px;min-width:0;font-family:var(--mono);font-size:16px;color:var(--yellow);background:#2b2838;border:2px solid var(--white);border-radius:0;padding:8px 10px}
+#lbName:focus-visible{outline:3px dashed var(--cyan);outline-offset:3px}
+#lbSend{font-size:24px;padding:3px 16px 1px;align-self:center}
+#lbList{list-style:none;margin:0;padding:0;font-family:var(--mono);font-size:12px;line-height:1.7;color:#dcd8e8;font-variant-numeric:tabular-nums}
+#lbList li{display:flex;justify-content:space-between;gap:12px}
+#lbList li span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lbList li.me{color:var(--yellow)}
 
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
 .chip{position:absolute;background:var(--ink);border:2px solid var(--white);padding:5px 12px 7px}
@@ -134,6 +143,15 @@ body.touch #combo{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
       <dt>HIGH SCORE</dt><dd id="oBest">0</dd>
     </dl>
     <button class="btn" id="againBtn">Skate again</button>
+    <div id="lb" hidden>
+      <div class="eyebrow">WORLD TOP 10</div>
+      <form id="lbForm" autocomplete="off">
+        <input id="lbName" type="text" maxlength="12" placeholder="YOUR NAME" aria-label="Name for the leaderboard" autocapitalize="characters" spellcheck="false" enterkeyhint="send">
+        <button class="btn" id="lbSend" type="submit">Post score</button>
+      </form>
+      <p class="fine" id="lbNote" aria-live="polite"></p>
+      <ol id="lbList" hidden></ol>
+    </div>
   </div>
 </section>
 
@@ -156,6 +174,28 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const R = (a, b) => a + Math.random() * (b - a);
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'shred-city';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ------------------------------------------------------------------ constants
 const G = 24, OLLIE_V = 7.6, CURB_X = 6.4, EDGE = 8.8, CURB_H = .16;
@@ -802,7 +842,7 @@ function resetRun(){
 function begin(){
   audioInit(); if (AC && AC.state === 'suspended') AC.resume();
   S.demo = false; resetRun(); S.state = 'play';
-  $('title').hidden = true; $('over').hidden = true; $('hud').hidden = false;
+  $('title').hidden = true; $('over').hidden = true; $('hud').hidden = false; lbRun++;
   if (isTouch){ $('touch').hidden = false; document.body.classList.add('touch'); }
   updateDecks(); updateLetters(); pop('SKATE!', 'Push with ↑ · ollie with Space');
 }
@@ -820,7 +860,49 @@ function gameOver(){
   $('finalScore').textContent = S.score.toLocaleString(); $('oDist').textContent = `${m} m`;
   $('oCombo').textContent = S.bestCombo ? `${S.bestCombo.total.toLocaleString()} (${S.bestCombo.names})` : 'none'; $('oTapes').textContent = S.tapes; $('oBest').textContent = best.toLocaleString();
   $('hud').hidden = true; $('touch').hidden = true; $('over').hidden = false; $('againBtn').focus();
+  lbOpen();
 }
+
+// online leaderboard on the game-over card; lbRun ties replies to the run they belong to
+let lbRun = 0, lbSent = false;
+function lbShow(scores, rank){
+  const ol = $('lbList'); ol.textContent = '';
+  scores.slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'), n = document.createElement('span'), v = document.createElement('span');
+    n.textContent = `${i + 1}. ${s.name}`; v.textContent = Number(s.score).toLocaleString();
+    if (i + 1 === rank) li.className = 'me';
+    li.append(n, v); ol.append(li);
+  });
+  ol.hidden = !scores.length;
+}
+async function lbOpen(){
+  if (!LB_URL) return;
+  const run = ++lbRun; lbSent = false;
+  let name = ''; try { name = localStorage.getItem('shred87-name') || ''; } catch (e){}
+  $('lbName').value = name.slice(0, 12); $('lbSend').disabled = false;
+  $('lb').hidden = false; $('lbForm').hidden = S.score <= 0; $('lbList').hidden = true; $('lbNote').textContent = 'Loading the board…';
+  const d = await lbFetch();
+  if (run !== lbRun || lbSent) return;
+  if (!d || !Array.isArray(d.scores)){ $('lbNote').textContent = 'Leaderboard offline.'; return; }
+  $('lbNote').textContent = d.scores.length ? '' : 'No scores yet. Be the first!';
+  lbShow(d.scores, 0);
+}
+async function lbSubmit(){
+  if (lbSent || S.state !== 'over') return;
+  const name = $('lbName').value.trim().slice(0, 12);
+  if (!name){ $('lbName').focus(); return; }
+  const run = lbRun; lbSent = true; $('lbSend').disabled = true; $('lbNote').textContent = 'Posting…';
+  try { localStorage.setItem('shred87-name', name); } catch (e){}
+  const d = await lbFetch({ name, score: S.score });
+  if (run !== lbRun) return;
+  if (!d || !Array.isArray(d.scores)){ lbSent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'Leaderboard offline. Your score is still saved here.'; return; }
+  $('lbForm').hidden = true;
+  $('lbNote').textContent = d.rank ? `You're #${d.rank} in the world, dude!` : 'Posted, but it missed the board this time.';
+  lbShow(d.scores, d.rank);
+}
+$('lbForm').addEventListener('submit', (e) => { e.preventDefault(); lbSubmit(); });
+// keep typing (and Enter/Space on the form) away from the game's window key handlers
+for (const ev of ['keydown', 'keyup']) $('lb').addEventListener(ev, (e) => e.stopPropagation());
 let lastScore = -1;
 function updateHUD(){
   if (S.score !== lastScore){ $('score').textContent = S.score.toLocaleString(); lastScore = S.score; }

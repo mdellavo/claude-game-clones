@@ -114,6 +114,20 @@ html,body{height:100%;margin:0;background:var(--void);color:var(--bone);overflow
 .deathstats div{display:flex;flex-direction:column}
 .deathstats b{font-family:var(--display);font-size:34px;font-weight:500;line-height:1}
 .deathstats span{font-family:var(--label);font-size:11px;letter-spacing:.16em;color:var(--bone-dim)}
+.lb{display:flex;flex-direction:column;gap:10px;width:min(340px,100%);flex:none;text-shadow:0 1px 3px #000}
+#dead.haslb{overflow:auto;gap:18px 48px}
+@media (max-width:960px){
+  #dead.haslb{flex-direction:column;align-items:flex-start}
+  #dead.haslb .lb{margin-left:clamp(0px,7vw,110px)}
+}
+@media (max-width:640px){#dead.haslb .lb{margin-left:0}}
+.lbrow{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.lb input{font-family:var(--body);font-size:18px;width:13ch;min-width:0;color:var(--bone);background:#0b0b0c;border:1px solid #4a4238;border-radius:0;padding:6px 10px;box-shadow:inset 0 0 0 2px #070708}
+.lb input:focus-visible{outline:2px solid var(--spectral);outline-offset:2px}
+.lb .btn:disabled{opacity:.5;cursor:default}
+.lb ol{list-style:none;margin:0;padding:0;font-variant-numeric:tabular-nums}
+.lb li{display:grid;grid-template-columns:3ch 1fr auto;gap:10px;line-height:1.45;color:#bdb39c}
+.lb li.me{color:var(--gold)}
 
 #fade{position:fixed;inset:0;background:#000;z-index:7;opacity:0;pointer-events:none;transition:opacity .9s}
 #banner{position:fixed;left:0;right:0;top:34%;z-index:7;text-align:center;pointer-events:none;opacity:0;transition:opacity 1.2s}
@@ -231,6 +245,15 @@ html,body{height:100%;margin:0;background:var(--void);color:var(--bone);overflow
     <p class="lede">You wake at the top of this depth. Half your gold stays with the dead.</p>
     <button class="btn" id="riseBtn">Rise again</button>
   </div>
+  <div class="lb" id="lb" hidden>
+    <div class="eyebrow">THE PARISH ROLL · MOST LAID TO REST</div>
+    <div class="lbrow" id="lbForm">
+      <input id="lbName" maxlength="12" placeholder="Your name" aria-label="Your name" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done">
+      <button class="btn small" id="lbSubmit">Inscribe</button>
+    </div>
+    <p class="fine" id="lbNote" aria-live="polite"></p>
+    <ol id="lbList"></ol>
+  </div>
 </section>
 
 <div id="fade"></div>
@@ -252,6 +275,27 @@ const ROMAN=n=>{const m=[[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']];let s='';fo
 if(!window.THREE){document.querySelector('#title .fine').textContent='The renderer could not load. Check your connection and reload the page.';return;}
 
 /* ================= DATA ================= */
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'hollowmere';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const DEPTH_NAMES=["The Lychgate","Chapel of Unrung Bells","The Drowned Crypt","Ossuary of Hands","The Pale Nave","Cellars of Cold Wax","Where the Choir Waits"];
 const depthName=d=>d<=DEPTH_NAMES.length?DEPTH_NAMES[d-1]:DEPTH_NAMES[(d-1)%DEPTH_NAMES.length]+' '+ROMAN(Math.floor((d-1)/DEPTH_NAMES.length)+1);
 const WHISPERS=["…the bells were never rung for you…","…sexton, your lantern is so warm…","…count the graves again. one is open…","…we kept a pew for you…","…further down. she is singing…","…do not look behind the altar…","…your name is already on a stone…","…the water remembers the village…"];
@@ -1127,7 +1171,41 @@ function startGame(){
 function showDeath(){
   $('dDepth').textContent=ROMAN(S.depth);$('dLevel').textContent=P.level;$('dKills').textContent=P.kills;
   $('dead').hidden=false;S.mode='dead';setTimeout(()=>$('riseBtn').focus(),50);
+  lbOpen();
 }
+/* The parish roll: the score is P.kills ("laid to rest"), which only ever grows, so lbSent
+   remembers the last tally sent and the form stays away until there is a higher one. */
+let lbSent=-1,lbBusy=false,lbSeq=0;
+function lbRender(scores,rank){
+  const ol=$('lbList');ol.textContent='';
+  (Array.isArray(scores)?scores:[]).slice(0,10).forEach((s,i)=>{
+    const li=document.createElement('li');if(i+1===rank)li.className='me';
+    for(const t of[i+1+'.',s.name,s.score]){const c=document.createElement('span');c.textContent=String(t);li.appendChild(c);}
+    ol.appendChild(li);});
+}
+function lbOpen(){
+  if(!LB_URL)return;
+  const seq=++lbSeq;
+  $('lb').hidden=false;$('dead').classList.add('haslb');$('lbForm').hidden=P.kills<=lbSent;$('lbNote').textContent='';lbRender();
+  try{$('lbName').value=localStorage.getItem('hollowmere-name')||'';}catch(_){}
+  lbFetch().then(d=>{if(seq!==lbSeq)return;
+    if(d&&Array.isArray(d.scores)){lbRender(d.scores);if(!d.scores.length)$('lbNote').textContent='No name is written here yet.';}
+    else $('lbNote').textContent='The parish roll is out of reach (offline).';});
+}
+function lbSubmit(){
+  if(!LB_URL||lbBusy||S.mode!=='dead'||P.kills<=lbSent)return;
+  const name=$('lbName').value.trim().slice(0,12)||'ANON',score=P.kills|0,seq=++lbSeq;
+  try{localStorage.setItem('hollowmere-name',name);}catch(_){}
+  lbBusy=true;$('lbSubmit').disabled=true;$('lbNote').textContent='Inscribing…';
+  lbFetch({name,score}).then(d=>{
+    lbBusy=false;$('lbSubmit').disabled=false;
+    if(!d||!Array.isArray(d.scores)){if(seq===lbSeq)$('lbNote').textContent='The parish roll is out of reach (offline). Try again.';return;}
+    lbSent=score;if(seq!==lbSeq)return;
+    $('lbForm').hidden=true;lbRender(d.scores,d.rank);
+    $('lbNote').textContent=d.rank?`Inscribed at rank ${d.rank} with ${score} laid to rest.`:`${score} laid to rest did not reach the roll.`;});
+}
+$('lbSubmit').addEventListener('click',lbSubmit);
+for(const t of['keydown','keyup','keypress'])$('lbName').addEventListener(t,e=>{e.stopPropagation();if(t==='keydown'&&e.key==='Enter'){e.preventDefault();lbSubmit();}});
 function rise(){
   $('dead').hidden=true;P.gold=Math.floor(P.gold/2);P.alive=true;recalc();P.hp=P.maxHp;P.mana=P.maxMana;
   buildLevel(S.depth);world.add(playerModel.g);playerModel.body.rotation.x=0;playerModel.body.position.y=0;

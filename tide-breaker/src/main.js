@@ -34,6 +34,42 @@ function saveRecords(r) {
   try { localStorage.setItem(RECORDS_KEY, JSON.stringify(r)); } catch { /* storage unavailable */ }
 }
 
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'tide-breaker';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+// The board ranks total championship time (all rounds, in milliseconds; lower is better).
+const LB_NAME_KEY = 'tidebreaker.name';
+function loadName() {
+  try { return localStorage.getItem(LB_NAME_KEY) || ''; } catch { return ''; }
+}
+function saveName(n) {
+  try { localStorage.setItem(LB_NAME_KEY, n); } catch { /* storage unavailable */ }
+}
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+};
+
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
 class Game {
@@ -177,11 +213,13 @@ class Game {
           <button data-nav data-mode="race">SINGLE RACE</button>
           <button data-nav data-mode="tt">TIME TRIAL</button>
           <button data-nav id="controls">HOW TO PLAY</button>
+          ${LB_URL ? '<button data-nav id="board">LEADERBOARD</button>' : ''}
           <button data-nav data-back id="back">BACK</button>
         </div>
       </div>`, () => {
       this.bind('[data-mode]', (el) => { this.sel.mode = el.dataset.mode; this.showRiders(); });
       this.bind('#controls', () => this.showControls());
+      this.bind('#board', () => this.showBoard());
       this.bind('#back', () => this.showTitle());
     });
   }
@@ -209,6 +247,110 @@ class Game {
         </div>
         <div class="row"><button data-nav data-back id="back">BACK</button></div>
       </div>`, () => this.bind('#back', () => this.showMain()));
+  }
+
+  showBoard() {
+    this.screen = 'board';
+    this.setMenu(`
+      <div class="panel" style="max-width:520px">
+        <h2>LEADERBOARD</h2>
+        <div class="row"><button data-nav data-back id="back">BACK</button></div>
+      </div>`, () => {
+      this.bind('#back', () => this.showMain());
+      this.mountBoard(null);
+    });
+  }
+
+  // Adds the online board to the open panel, above its button row. `run` is a finished
+  // championship ({ time, dq }); with one, the player can post its total time.
+  mountBoard(run) {
+    if (!LB_URL) return;
+    const panel = menuEl.querySelector('.panel');
+    panel.classList.add('has-lb');
+    const box = el('div', 'lb');
+    const status = el('div', 'lb-note', 'Loading…');
+    const table = el('table', 'results lb-table');
+    const draw = (res, rank) => {
+      table.textContent = '';
+      if (!res || !Array.isArray(res.scores)) { status.textContent = 'Leaderboard offline'; return false; }
+      status.textContent = res.scores.length ? '' : 'No times posted yet';
+      res.scores.slice(0, 10).forEach((s, i) => {
+        const tr = el('tr', i + 1 === rank ? 'me' : '');
+        tr.append(el('td', '', `${i + 1}${ordinal(i + 1)}`), el('td', '', s.name), el('td', 'num', fmtTime(s.score / 1000)));
+        table.append(tr);
+      });
+      return true;
+    };
+    box.append(el('div', 'lb-head', 'ONLINE TOP 10 — CHAMPIONSHIP TOTAL TIME'));
+
+    if (run && run.dq) {
+      box.append(el('div', 'lb-note', 'Finish every round without a disqualification to post a time.'));
+    } else if (run && !run.lbSent) {
+      const score = Math.round(run.time * 1000);
+      const form = el('div', 'lb-form');
+      const name = el('input');
+      name.type = 'text';
+      name.maxLength = 12;
+      name.placeholder = 'YOUR NAME';
+      name.autocomplete = 'off';
+      name.spellcheck = false;
+      name.setAttribute('aria-label', 'Name for the leaderboard');
+      name.value = loadName().slice(0, 12);
+      const send = el('button', '', 'SUBMIT');
+      send.type = 'button';
+      const submit = async () => {
+        if (run.lbSent) return;
+        run.lbSent = true;
+        send.disabled = true;
+        const who = name.value.trim().slice(0, 12) || 'ANON';
+        saveName(who);
+        name.blur();
+        status.textContent = 'Sending…';
+        const res = await lbFetch({ name: who, score });
+        if (!draw(res, res && res.rank)) {
+          // Let the player try again; the run has not been recorded.
+          run.lbSent = false;
+          send.disabled = false;
+          status.textContent = 'Leaderboard offline — time not sent';
+          return;
+        }
+        form.remove();
+        status.textContent = res.rank ? `YOU RANK ${res.rank}${ordinal(res.rank)} — ${fmtTime(run.time)}` : `${fmtTime(run.time)} did not make the board`;
+      };
+      // Keep typing away from the menu and race key handlers on window.
+      for (const type of ['keydown', 'keyup', 'keypress']) {
+        name.addEventListener(type, (e) => {
+          e.stopPropagation();
+          if (type !== 'keydown') return;
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            // Submitting blurs the field; keep auto-repeat of this press from reaching the menu.
+            const hold = (ev) => { if (ev.key === 'Enter') ev.stopImmediatePropagation(); };
+            const release = (ev) => {
+              if (ev.key !== 'Enter') return;
+              window.removeEventListener('keydown', hold, true);
+              window.removeEventListener('keyup', release, true);
+            };
+            window.addEventListener('keydown', hold, true);
+            window.addEventListener('keyup', release, true);
+            submit();
+          }
+          else if (e.key === 'Escape') name.blur();
+        });
+      }
+      send.addEventListener('click', () => { audio.menuOk(); submit(); });
+      form.append(el('span', 'lb-time', `YOUR TIME ${fmtTime(run.time)}`), name, send);
+      box.append(form);
+    }
+
+    box.append(status, table);
+    panel.insertBefore(box, panel.querySelector('.row'));
+    const field = box.querySelector('input');
+    if (field && !matchMedia('(pointer: coarse)').matches) field.focus();
+    lbFetch().then((res) => {
+      // A submit that finished first has already drawn a fresher board.
+      if (!(run && run.lbSent)) draw(res);
+    });
   }
 
   statBars(r) {
@@ -313,7 +455,7 @@ class Game {
       </div>`, () => {
       this.bindDiff();
       this.bind('#start', () => {
-        this.champ = { round: 0, points: Object.fromEntries(RIDERS.map((r) => [r.id, 0])) };
+        this.champ = { round: 0, points: Object.fromEntries(RIDERS.map((r) => [r.id, 0])), time: 0, dq: false };
         this.beginRace(0, 'champ');
       });
       this.bind('#back', () => this.showRiders());
@@ -400,6 +542,9 @@ class Game {
         r.pts = r.e.dq ? 0 : CHAMP_POINTS[i] ?? 0;
         this.champ.points[r.e.rider.id] += r.pts;
       });
+      const p = race.player;
+      if (p.dq || !isFinite(p.finishTime)) this.champ.dq = true;
+      else this.champ.time += p.finishTime;
       const last = this.champ.round >= COURSES.length - 1;
       buttons = `<button data-nav id="standings">${last ? 'FINAL STANDINGS' : 'STANDINGS'}</button>`;
     } else {
@@ -453,6 +598,7 @@ class Game {
         this.beginRace(ch.round, 'champ');
       });
       this.bind('#menu', () => this.quitToMenu());
+      if (last) this.mountBoard(ch);
     });
   }
 

@@ -69,6 +69,13 @@ table.res tr.me td{color:var(--cyan);font-weight:700}
 .stats{display:flex;justify-content:center;gap:22px;flex-wrap:wrap;font-size:16px;color:#c9c3ff;letter-spacing:.06em;margin-bottom:10px}
 .stats b{color:#fff;font-size:20px}
 .small{font-size:14px;color:#a9a2d8}
+#lb{margin-top:16px}
+#lbForm{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:8px}
+#lbName{font:700 20px "Barlow Condensed",sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#fff;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:9px 12px;width:170px;max-width:100%;text-align:center;-webkit-user-select:text;user-select:text;touch-action:manipulation}
+#lbName:focus-visible{outline:3px solid var(--yellow);outline-offset:3px}
+#lbSend:disabled{opacity:.4;cursor:default}
+#lbNote{margin:8px 0 0}
+#lbTable{margin-bottom:0}
 #touch{position:fixed;inset:0;pointer-events:none}
 #stick{position:absolute;left:18px;bottom:calc(28px + env(safe-area-inset-bottom,0px));width:150px;height:110px;border-radius:55px;border:2px solid rgba(34,230,255,.5);background:rgba(12,8,26,.35);pointer-events:auto;touch-action:none}
 #stick i{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:rgba(34,230,255,.55);box-shadow:0 0 16px var(--cyan)}
@@ -143,6 +150,12 @@ body.touch #prompt{bottom:calc(214px + env(safe-area-inset-bottom,0px));font-siz
     <button class="btn" id="nextBtn" type="button">NEXT RACE</button>
     <button class="btn alt" id="retryBtn" type="button">RETRY</button>
     <button class="btn alt" id="menuBtn" type="button">MENU</button>
+    <div id="lb" hidden>
+      <div class="eyebrow">ONLINE BOARD · FASTEST RUNS</div>
+      <form id="lbForm"><input id="lbName" type="text" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" placeholder="YOUR NAME" aria-label="Name for the online board"><button class="btn alt" id="lbSend" type="submit">SUBMIT TIME</button></form>
+      <p class="small" id="lbNote"></p>
+      <table class="res" id="lbTable"></table>
+    </div>
   </div>
 </div>
 <div class="screen" id="pause" hidden>
@@ -171,6 +184,27 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
 };
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'neon-skitch';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function seeded(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
 /* ================= RACES ================= */
@@ -962,8 +996,39 @@ function finishRace() {
   $('nextBtn').hidden = !podium || last; $('nextBtn').textContent = 'NEXT RACE';
   if (podium && last) $('resTitle').textContent = place === 1 ? 'CHAMPION!' : `${place}${ordinal(place)} · CUP DONE`;
   $('results').hidden = false; $('hud').hidden = true; $('touch').hidden = true; state = 'results'; MUS.on = false;
+  lbOpen(wreck ? null : Math.round(player.finishT * 1000));
   setTimeout(() => (podium && !last ? $('nextBtn') : $('retryBtn')).focus({ preventScroll: true }), 50);
 }
+// Online board on the results screen. The score is the finish time in milliseconds (lower is better); a DNF can view but not submit.
+let lbRun = 0, lbScore = null, lbSent = false;
+function lbRender(scores, rank) {
+  const tb = $('lbTable'); tb.textContent = '';
+  (Array.isArray(scores) ? scores : []).slice(0, 10).forEach((sc, i) => {
+    const tr = tb.insertRow(); if (i + 1 === rank) tr.className = 'me';
+    tr.insertCell().textContent = i + 1; tr.insertCell().textContent = String(sc.name); tr.insertCell().textContent = fmtT((+sc.score || 0) / 1000);
+  });
+  tb.hidden = !tb.rows.length;
+}
+function lbOpen(score) {
+  if (!LB_URL) return;
+  const run = ++lbRun; lbScore = score; lbSent = false;
+  $('lb').hidden = false; $('lbForm').hidden = score == null; $('lbSend').disabled = false; $('lbName').value = String(store.get('ns-name', '')).slice(0, 12);
+  $('lbNote').textContent = 'Loading the board…'; lbRender([]);
+  lbFetch().then(d => { if (run !== lbRun || lbSent) return; if (d) { lbRender(d.scores); $('lbNote').textContent = d.scores && d.scores.length ? '' : 'No times yet. Be the first.'; } else $('lbNote').textContent = 'Board offline.'; });
+}
+$('lbForm').addEventListener('submit', e => {
+  e.preventDefault(); if (lbSent || lbScore == null) return;
+  const name = $('lbName').value.trim().toUpperCase().slice(0, 12); if (!name) { $('lbName').focus(); return; }
+  const run = lbRun; lbSent = true; $('lbSend').disabled = true; store.set('ns-name', name); $('lbNote').textContent = 'Sending…';
+  lbFetch({ name, score: lbScore }).then(d => {
+    if (run !== lbRun) return;
+    if (!d) { lbSent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'Board offline. Your time was not sent.'; return; }
+    $('lbForm').hidden = true; lbRender(d.scores, d.rank);
+    $('lbNote').textContent = d.rank ? `You are #${d.rank} on the board with ${fmtT(lbScore / 1000)}.` : `${fmtT(lbScore / 1000)} did not make the board.`;
+  });
+});
+// keep typing a name away from the game's window-level key handlers
+for (const ev of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(ev, e => e.stopPropagation());
 function togglePause() {
   if (state === 'race' || state === 'intro') { state = 'paused:' + state; $('pause').hidden = false; MUS.on = false; engineAudio(0, false, false); }
   else if (state.startsWith('paused:')) { state = state.slice(7); $('pause').hidden = true; MUS.on = true; }

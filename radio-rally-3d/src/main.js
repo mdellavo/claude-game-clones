@@ -16,6 +16,29 @@ const PLACE_POINTS = [1000, 600, 300, 0];
 const UPGRADE_NAMES = { engine: 'SUPER ENGINE', tires: 'HI-TRACTION TIRES', battery: 'TURBO BATTERY' };
 const CAMERA_MODES = ['dynamic', 'classic', 'chase'];
 
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'radio-rally-3d';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const LB_NAME_KEY = 'radio-rally-3d.name';
+
 const $ = (id) => document.getElementById(id);
 const ordinal = (n) => ['ST', 'ND', 'RD', 'TH'][Math.min(n, 4) - 1];
 const fmtTime = (t) => {
@@ -72,6 +95,7 @@ class Game {
     this.hudCache = {};
 
     this.buildHudStatic();
+    this.lbInit();
     this.loadTrack(0, true);
     this.state = 'title';
     $('loading').classList.add('hidden');
@@ -458,6 +482,7 @@ class Game {
     $('res-stats').innerHTML = `SCORE ${this.score}<br>ENGINE ${u.engine} · TIRES ${u.tires} · BATTERY ${u.battery}<br>LETTERS ${WORD.split('').map((ch, i) => (this.letters[i] ? ch : '_')).join(' ')}`;
     $('msg').textContent = '';
     $('submsg').textContent = '';
+    this.lbShow(!!LB_URL && this.lives <= 0);
     this.setState('results');
   }
 
@@ -476,6 +501,78 @@ class Game {
       this.loadTrack(0, true);
       this.setState('title');
     }
+  }
+
+  // ---------------------------------------------------------------- leaderboard
+  lbInit() {
+    const field = $('lb-name');
+    // keep typing away from the game's window-level key handling
+    for (const type of ['keydown', 'keyup', 'keypress']) field.addEventListener(type, (e) => e.stopPropagation());
+    $('lb-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.lbSubmit();
+    });
+  }
+
+  // Shown on the game-over results screen only: the run's final score can be sent once.
+  lbShow(on) {
+    $('lb').classList.toggle('hidden', !on);
+    $('results').classList.toggle('lb-on', on);
+    this.lbRun = (this.lbRun || 0) + 1;
+    if (!on) return;
+    this.lbSent = false;
+    let name = '';
+    try { name = localStorage.getItem(LB_NAME_KEY) || ''; } catch {}
+    $('lb-name').value = name;
+    $('lb-name').disabled = $('lb-send').disabled = false;
+    $('lb-form').classList.remove('hidden');
+    $('lb-note').textContent = '';
+    this.lbRender([]);
+    const run = this.lbRun;
+    lbFetch().then((r) => {
+      if (run !== this.lbRun || this.lbSent) return;
+      if (r && Array.isArray(r.scores)) this.lbRender(r.scores);
+      else $('lb-note').textContent = 'LEADERBOARD OFFLINE';
+    });
+  }
+
+  async lbSubmit() {
+    if (this.lbSent) return;
+    this.lbSent = true;
+    const run = this.lbRun;
+    const name = $('lb-name').value.trim().toUpperCase().slice(0, 12);
+    try { localStorage.setItem(LB_NAME_KEY, name); } catch {}
+    $('lb-name').disabled = $('lb-send').disabled = true;
+    $('lb-name').blur();
+    $('lb-note').textContent = 'SENDING…';
+    const r = await lbFetch({ name, score: Math.max(0, Math.round(this.score)) });
+    if (run !== this.lbRun) return;
+    if (!r || !Array.isArray(r.scores)) {
+      // let the player try again
+      this.lbSent = false;
+      $('lb-name').disabled = $('lb-send').disabled = false;
+      $('lb-note').textContent = 'OFFLINE · NOT SENT';
+      return;
+    }
+    $('lb-form').classList.add('hidden');
+    $('lb-note').textContent = r.rank ? `YOU RANKED #${r.rank}` : 'NOT IN THE TOP 50';
+    this.lbRender(r.scores, r.rank);
+  }
+
+  lbRender(scores, rank) {
+    const list = $('lb-list');
+    list.textContent = '';
+    scores.slice(0, 10).forEach((s, i) => {
+      const li = document.createElement('li');
+      if (i + 1 === rank) li.className = 'me';
+      for (const text of [`${i + 1}.`, String(s.name), String(s.score)]) {
+        const span = document.createElement('span');
+        span.textContent = text;
+        li.appendChild(span);
+      }
+      list.appendChild(li);
+    });
+    $('lb-head').classList.toggle('hidden', !scores.length);
   }
 
   // ---------------------------------------------------------------- visuals

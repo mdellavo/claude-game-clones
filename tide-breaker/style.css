@@ -87,6 +87,22 @@ table.results td.num { font-family: "Courier New", monospace; font-weight: 900; 
 .hint { font-family: Arial, sans-serif; font-style: normal; font-size: 14px; opacity: .85; text-align: center; margin-top: 14px; line-height: 1.5; }
 .buoy-red { color: #ff5a5a; } .buoy-yel { color: #ffe14d; }
 .course-mini { width: 100%; height: 90px; display: block; margin-bottom: 8px; border-radius: 10px; }
+.panel.has-lb { margin: auto; align-self: flex-start; }
+/* The MENU button shares its id with the #menu overlay and inherits its full-panel box, which would cover the board. */
+.panel.has-lb button#menu { position: static; display: inline-block; padding: 12px 18px; overflow: visible; }
+.lb { margin-top: 18px; font-style: italic; }
+.lb-head { color: #7ff0ff; font-size: 14px; letter-spacing: 1px; text-align: center; }
+.lb-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center; margin: 12px 0 4px; }
+.lb-time { font-size: 20px; color: #ffe14d; text-shadow: 2px 2px 0 #06223a; }
+.lb-form input { font: inherit; font-style: italic; font-size: 20px; color: #fff; background: rgba(0,0,0,.35); border: 3px solid #fff; border-radius: 12px; padding: 12px 14px; width: 220px; max-width: 100%; user-select: text; -webkit-user-select: text; }
+.lb-form input::placeholder { color: rgba(255,255,255,.5); }
+.lb-form input:focus { outline: none; border-color: #ffe14d; }
+.lb-note { font-family: Arial, sans-serif; font-style: normal; font-size: 14px; opacity: .85; text-align: center; margin: 8px 0; }
+.lb-note:empty { display: none; }
+table.lb-table { font-size: 17px; }
+table.lb-table td { padding: 5px 10px; }
+/* Leave room to scroll clear of the on-screen race buttons. */
+@media (pointer: coarse) { .panel.has-lb { margin: 0 auto 170px; } }
 #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 34px; font-style: italic; background: #06223a; }
 @media (max-width: 700px) {
   #pos-num { font-size: 56px; } #speed-val { font-size: 44px; } #minimap { width: 130px; height: 130px; }

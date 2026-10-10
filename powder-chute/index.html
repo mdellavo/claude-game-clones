@@ -72,6 +72,19 @@ h2{font-family:var(--pixel);font-size:clamp(18px,3vw,26px);margin:0;color:var(--
 .err{display:flex;gap:12px;align-items:flex-start}
 .err .ico{flex:none;width:36px;height:36px;background:var(--flag);color:#fff;font-family:var(--pixel);font-size:22px;
   display:flex;align-items:center;justify-content:center;border-radius:50%}
+#over .sheet{margin:auto}
+#lb{margin:0 0 14px}
+#lbForm{gap:8px;margin:0 0 8px}
+#lbName{flex:1 1 130px;min-width:0;font-family:var(--pixel);font-size:16px;color:var(--slate);background:#fff;padding:7px 8px;border-radius:0;
+  border:2px solid;border-color:var(--face-dk) var(--face-hi) var(--face-hi) var(--face-dk)}
+#lbNote:empty{display:none}
+#lbNote{margin:0 0 6px}
+#lbList{list-style:none;margin:0;padding:0;font-family:var(--pixel);font-size:11px;font-variant-numeric:tabular-nums}
+@media (min-width:520px){#lbList{column-count:2;column-gap:18px}}
+#lbList li{display:flex;gap:8px;padding:2px 0;break-inside:avoid}
+#lbList li i{font-style:normal;flex:none;width:2.2em;text-align:right;color:#5d6570}
+#lbList li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lbList li.me{color:var(--flag)}
 
 /* ---- HUD ---- */
 #hud{position:fixed;inset:0;z-index:5;pointer-events:none;font-variant-numeric:tabular-nums}
@@ -206,6 +219,15 @@ body.touch #wBal{bottom:calc(196px + env(safe-area-inset-bottom,0px))}
         </div>
       </div>
       <dl class="tally" id="tally"></dl>
+      <div class="inset" id="lb" hidden>
+        <h3>HISCORES.NET · TOP 10</h3>
+        <div class="row" id="lbForm">
+          <input id="lbName" type="text" maxlength="12" placeholder="YOUR NAME" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" aria-label="Name for the online leaderboard">
+          <button class="btn" id="lbSend" type="button">POST SCORE</button>
+        </div>
+        <p class="fine" id="lbNote" aria-live="polite"></p>
+        <ol id="lbList"></ol>
+      </div>
       <div class="row"><button class="btn go" id="again" type="button">RUN IT AGAIN</button><button class="btn" id="menu" type="button">CHANGE RUN</button></div>
     </div>
   </div>
@@ -941,6 +963,71 @@ function animateRider(dt){
   rider.visible = !(S.invuln > 0 && Math.floor(S.invuln * 12) % 2 === 0);
 }
 
+/* ============================ leaderboard ============================ */
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'powder-chute';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const lb = { run: 0, total: 0, sent: false, busy: false };
+function lbList(scores, rank){
+  const ol = $('lbList'); ol.textContent = '';
+  scores.slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'), n = document.createElement('i'), who = document.createElement('span'), pts = document.createElement('b');
+    n.textContent = `${i + 1}.`; who.textContent = String(s.name ?? ''); pts.textContent = fmt(Number(s.score) || 0);
+    if (rank === i + 1) li.className = 'me';
+    li.append(n, who, pts); ol.append(li);
+  });
+}
+async function lbOpen(total){
+  if (!LB_URL) return;
+  const run = ++lb.run; lb.total = total; lb.sent = false; lb.busy = false;
+  $('lb').hidden = false; $('lbForm').hidden = total <= 0; $('lbSend').disabled = false;
+  $('lbList').textContent = ''; $('lbNote').textContent = 'Dialling the lodge…';
+  let name = ''; try { name = localStorage.getItem('powder-name') || ''; } catch (e){}
+  $('lbName').value = name.slice(0, 12);
+  const r = await lbFetch();
+  if (run !== lb.run || lb.sent) return;
+  if (!Array.isArray(r?.scores)){ $('lbNote').textContent = 'Leaderboard offline.'; return; }
+  lbList(r.scores); if (!lb.busy) $('lbNote').textContent = r.scores.length ? '' : 'Nobody on the board yet.';
+}
+async function lbSubmit(){
+  if (!LB_URL || lb.sent || lb.busy || S.state !== 'over') return;
+  const name = $('lbName').value.trim().slice(0, 12);
+  if (!name){ $('lbNote').textContent = 'Type a name first.'; $('lbName').focus(); return; }
+  try { localStorage.setItem('powder-name', name); } catch (e){}
+  const run = lb.run; lb.busy = true; $('lbSend').disabled = true; $('lbNote').textContent = 'Posting…';
+  const r = await lbFetch({ name, score: lb.total });
+  if (run !== lb.run) return;
+  lb.busy = false;
+  if (!Array.isArray(r?.scores)){ $('lbSend').disabled = false; $('lbNote').textContent = 'Leaderboard offline. Score not posted.'; return; }
+  lb.sent = true; $('lbForm').hidden = true;
+  $('lbNote').textContent = r.rank ? `Posted. You are #${r.rank}.` : 'Posted, but not enough to make the board.';
+  lbList(r.scores, r.rank); $('again').focus();
+}
+$('lbSend').addEventListener('click', lbSubmit);
+/* keep typing away from the game's window-level key handlers */
+for (const ev of ['keydown', 'keyup', 'keypress']) $('lb').addEventListener(ev, (e) => {
+  e.stopPropagation();
+  if (ev === 'keydown' && e.code === 'Enter' && e.target === $('lbName')){ e.preventDefault(); lbSubmit(); }
+});
+
 /* ============================ run flow ============================ */
 function resetRun(){
   objs.length = 0; gates.length = 0;
@@ -957,6 +1044,7 @@ function begin(){
   ac(); if (A.ctx && A.ctx.state === 'suspended') A.ctx.resume();
   resetRun(); S.state = 'run';
   $('title').hidden = true; $('over').hidden = true; $('pause').hidden = true; $('hud').hidden = false;
+  lb.run++;
   if (isTouch) document.body.classList.add('touch');
   toast(`${RUN.name} · DROP IN`);
 }
@@ -977,6 +1065,7 @@ function endRun(kind, bar, title, text){
     ['WIPEOUTS', S.crashes, 0], ['HIGH SCORE', fmt(best), 1],
   ].map(([k, v, hi]) => `<div><dt>${k}</dt><dd class="${hi ? 'hi' : ''}">${v}</dd></div>`).join('');
   $('hud').hidden = true; $('over').hidden = false; $('again').focus();
+  lbOpen(total);
 }
 
 /* ============================ main loop ============================ */

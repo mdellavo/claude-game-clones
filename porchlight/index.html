@@ -64,6 +64,17 @@ h2{font-family:var(--disp);font-weight:800;font-size:clamp(44px,10vw,92px);line-
 .stat b{display:block;font-family:var(--disp);font-weight:800;font-size:34px;font-variant-numeric:tabular-nums}
 .stat span{font-size:12px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
 .err{color:var(--laser);font-family:var(--type)}
+.lb{list-style:none;margin:0;padding:0;display:grid;gap:3px;font-family:var(--type);font-size:15px}
+.lb li{display:grid;grid-template-columns:2.2em 1fr auto;gap:10px;font-variant-numeric:tabular-nums}
+.lb li span:first-child{color:var(--dim)}
+.lb li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:pre}
+.lb li.me{color:var(--amber)}
+.lb li.none{display:block;color:var(--dim)}
+#lbName{flex:1 1 150px;min-width:0;max-width:260px;font-family:var(--type);font-size:16px;background:rgba(10,15,18,.8);color:var(--paper);border:1px solid rgba(226,220,203,.45);
+  border-radius:0;padding:11px 12px;user-select:text;-webkit-user-select:text}
+#lbName:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+#lbNote{color:var(--amber)}
+.ghost:disabled{opacity:.4;cursor:default}
 
 /* HUD */
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
@@ -193,6 +204,10 @@ body.touch #hint{display:none}
         </ul>
       </div>
     </div>
+    <div class="card" id="titleLb" hidden>
+      <div class="hd"><span>Fastest way home</span><span>Online · any night</span></div>
+      <ol class="lb" id="titleLbList"></ol>
+    </div>
     <div class="row">
       <button class="go" id="startBtn">HEAD FOR HOME</button>
       <span class="err" id="loadErr" hidden></span>
@@ -218,6 +233,14 @@ body.touch #hint{display:none}
     <h2 id="endTitle"></h2>
     <p class="lede" id="endLede"></p>
     <div class="stats" id="endStats"></div>
+    <div class="card" id="endLb" hidden>
+      <div class="hd"><span>Fastest way home</span><span id="lbNote"></span></div>
+      <div class="row" id="lbForm">
+        <input id="lbName" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" placeholder="Your name" aria-label="Name for the leaderboard">
+        <button class="ghost" id="lbSend">Post time</button>
+      </div>
+      <ol class="lb" id="endLbList"></ol>
+    </div>
     <div class="row">
       <button class="go" id="nextBtn">NEXT NIGHT</button>
       <button class="ghost" id="retryBtn">Try again</button>
@@ -254,6 +277,27 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 };
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'porchlight';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /* ================================================= renderer */
 const canvas = $('gl');
@@ -1116,12 +1160,59 @@ function showEnd() {
   }
   $('nextBtn').hidden = !won || last; $('retryBtn').textContent = won ? 'Play it again' : 'Try again';
   $('end').hidden = false;
+  lbEnd(won);
 }
+/* online board: the score is the time taken to reach the door, in milliseconds, so lower is better */
+const lbTime = ms => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}.${Math.floor(ms % 1000 / 100)}`;
+let lbRun = 0, lbScore = 0, lbSent = false;
+function lbRender(list, scores, mine) {
+  list.textContent = '';
+  const rows = Array.isArray(scores) ? scores.slice(0, 10) : [];
+  rows.forEach((s, i) => {
+    const li = document.createElement('li'); if (i + 1 === mine) li.className = 'me';
+    for (const t of [i + 1 + '.', String(s.name), lbTime(Number(s.score) || 0)]) { const sp = document.createElement('span'); sp.textContent = t; li.appendChild(sp); }
+    list.appendChild(li);
+  });
+  if (!rows.length) { const li = document.createElement('li'); li.className = 'none'; li.textContent = 'Nobody has made it home yet.'; list.appendChild(li); }
+}
+async function lbTitle() {
+  if (!LB_URL) return;
+  const res = await lbFetch();
+  $('titleLb').hidden = !res; if (res) lbRender($('titleLbList'), res.scores);
+}
+async function lbEnd(won) {
+  const run = ++lbRun; lbSent = false; lbScore = Math.round(nightT * 1000);
+  $('endLb').hidden = true;
+  if (!LB_URL) return;
+  $('lbForm').hidden = !won; $('lbSend').disabled = false; $('lbNote').textContent = ''; $('endLbList').textContent = '';
+  $('lbName').value = String(store.get('porchlight-name', '')).slice(0, 12);
+  $('endLb').hidden = !won;
+  const res = await lbFetch();
+  if (run !== lbRun || lbSent) return;
+  if (res) { lbRender($('endLbList'), res.scores); $('endLb').hidden = false; }
+  else if (won) $('lbNote').textContent = 'Board offline';
+}
+async function lbSubmit() {
+  if (!LB_URL || lbSent || state !== 'end' || endKind !== 'home') return;
+  const run = lbRun; lbSent = true; $('lbSend').disabled = true;
+  const name = $('lbName').value.trim().slice(0, 12) || 'ANON';
+  store.set('porchlight-name', name);
+  $('lbNote').textContent = 'Posting…';
+  const res = await lbFetch({ name, score: lbScore });
+  if (run !== lbRun) return;
+  if (!res) { lbSent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'Offline · time not posted'; return; }
+  $('lbForm').hidden = true;
+  $('lbNote').textContent = res.rank ? `${lbTime(lbScore)} · you placed #${res.rank}` : `${lbTime(lbScore)} · outside the top 50`;
+  lbRender($('endLbList'), res.scores, res.rank);
+}
+$('lbSend').onclick = lbSubmit;
+// keep typing away from the game's window-level key handlers
+for (const ev of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(ev, e => { e.stopPropagation(); if (ev === 'keydown' && e.key === 'Enter') { e.preventDefault(); lbSubmit(); } });
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 function toTitle() {
   state = 'title'; for (const id of ['end', 'pause', 'hud', 'touch', 'dot', 'hint']) $(id).hidden = true; $('title').hidden = false;
   $('white').style.opacity = 0; $('warm').style.opacity = 0; if (ac && ac.state === 'suspended') ac.resume();
-  nightIdx = Math.min(nightIdx, unlocked - 1); renderNights();
+  nightIdx = Math.min(nightIdx, unlocked - 1); renderNights(); lbTitle();
 }
 $('startBtn').onclick = () => startNight(nightIdx);
 $('resumeBtn').onclick = () => pause(false);
@@ -1189,4 +1280,6 @@ renderNights();
 window.__plReady = true;
 window.__porch = { get pl() { return pl; }, get state() { return state; }, startNight, step: tick, renderer, keys, get cabin() { return cabin; }, aliens: () => aliens, ufos: () => ufos, circles: () => circles, cows: () => cows, throwFlare, toggleLight, mash };
 requestAnimationFrame(frame);
+// read the board once the first frame is out, so shader compilation cannot eat into the request timeout
+requestAnimationFrame(() => setTimeout(lbTitle, 200));
 </script>

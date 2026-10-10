@@ -54,6 +54,17 @@ h2{font-family:var(--disp);font-weight:400;font-size:clamp(38px,8vw,78px);line-h
 .stat b{display:block;font-family:var(--disp);font-weight:400;font-size:30px;font-variant-numeric:tabular-nums}
 .stat span{font-size:13px;letter-spacing:.18em;color:var(--steel);text-transform:uppercase;font-weight:600}
 .err{color:var(--gold);font-family:var(--radio)}
+#lbMsg{color:var(--gold)}
+#lbName{flex:1 1 150px;min-width:0;font:600 18px var(--ui);letter-spacing:.06em;background:rgba(240,227,192,.08);color:var(--cream);border:1px solid rgba(240,227,192,.5);border-radius:0;padding:10px 12px;
+  user-select:text;-webkit-user-select:text}
+#lbName:focus-visible,#lbSend:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+#lbSend:disabled{opacity:.5;cursor:default}
+.lb{list-style:none;margin:0;padding:0;display:grid;font-size:17px;font-variant-numeric:tabular-nums;counter-reset:lb}
+.lb li{counter-increment:lb;display:grid;grid-template-columns:2.2em 1fr auto;gap:8px;padding:3px 6px;border-top:1px solid rgba(240,227,192,.15)}
+.lb li::before{content:counter(lb);color:var(--steel);font-weight:700}
+.lb li span{overflow:hidden;text-overflow:ellipsis;white-space:pre}
+.lb li b{font-weight:600}
+.lb li.me{background:rgba(240,138,60,.16);color:var(--gold)}
 
 /* HUD */
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5;font-variant-numeric:tabular-nums}
@@ -218,6 +229,14 @@ body.touch #br{bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}
     <h2 id="endTitle"></h2>
     <p class="lede" id="endLede"></p>
     <div class="stats" id="endStats"></div>
+    <div class="card" id="lbCard" hidden>
+      <div class="hd"><span>Fastest kills</span><span id="lbMsg"></span></div>
+      <form class="row" id="lbForm" hidden>
+        <input id="lbName" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" placeholder="Callsign" aria-label="Callsign">
+        <button class="ghost" id="lbSend">Post time</button>
+      </form>
+      <ol class="lb" id="lbList"></ol>
+    </div>
     <div class="row"><button class="go" id="againBtn">FLY AGAIN</button><button class="ghost" id="titleBtn">Title</button></div>
   </div>
 </section>
@@ -248,6 +267,28 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 };
+
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'claws-over-tarowa';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /* ================================================= renderer */
 const canvas = $('gl');
@@ -1255,7 +1296,48 @@ function showEnd() {
     const d = document.createElement('div'); d.className = 'stat'; d.innerHTML = '<b></b><span></span>'; d.querySelector('b').textContent = v; d.querySelector('span').textContent = l; st.appendChild(d);
   }
   $('end').hidden = false;
+  lbOpen(won);
 }
+// The board ranks kill times (fight clock in milliseconds, lowest first), so only a win can post.
+const fmtMs = ms => { const t = Math.floor(ms / 100); return `${Math.floor(t / 600)}:${String(Math.floor(t % 600 / 10)).padStart(2, '0')}.${t % 10}`; };
+let lbRun = 0, lbScore = 0, lbBusy = false, lbSent = false;
+function lbRender(scores, rank) {
+  const ol = $('lbList'); ol.textContent = '';
+  (Array.isArray(scores) ? scores : []).slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'), n = document.createElement('span'), t = document.createElement('b');
+    n.textContent = s.name; t.textContent = fmtMs(s.score); if (i + 1 === rank) li.className = 'me';
+    li.append(n, t); ol.appendChild(li);
+  });
+  ol.hidden = !ol.children.length;
+}
+function lbOpen(won) {
+  const run = ++lbRun; lbBusy = lbSent = false;
+  $('lbCard').hidden = true; if (!LB_URL) return;
+  lbScore = Math.round(fightT * 1000);
+  $('lbCard').hidden = false; $('lbForm').hidden = !won; $('lbSend').disabled = false; $('lbName').value = store.get('cot-name', '') || '';
+  $('lbMsg').textContent = 'Loading…'; lbRender(null);
+  lbFetch().then(d => {
+    if (run !== lbRun || lbBusy || lbSent) return;
+    if (!d || !Array.isArray(d.scores)) { $('lbMsg').textContent = 'Leaderboard offline'; return; }
+    $('lbMsg').textContent = won ? 'Your time ' + fmtMs(lbScore) : d.scores.length ? 'Bring it down to post a time' : 'No times yet';
+    lbRender(d.scores);
+  });
+}
+$('lbForm').onsubmit = async e => {
+  e.preventDefault(); if (lbBusy || lbSent || state !== 'end') return;
+  const run = lbRun, name = $('lbName').value.trim().slice(0, 12);
+  store.set('cot-name', name);
+  lbBusy = true; $('lbSend').disabled = true; $('lbMsg').textContent = 'Sending…';
+  const d = await lbFetch({ name, score: lbScore });
+  if (run !== lbRun) return;
+  lbBusy = false;
+  if (!d || !Array.isArray(d.scores)) { $('lbSend').disabled = false; $('lbMsg').textContent = 'Leaderboard offline'; return; }
+  lbSent = true; $('lbForm').hidden = true;
+  $('lbMsg').textContent = d.rank ? `You placed #${d.rank} · ${fmtMs(lbScore)}` : 'Off the board this time';
+  lbRender(d.scores, d.rank);
+};
+// keep typing in the callsign field away from the flight keys
+for (const t of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(t, e => e.stopPropagation());
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 function toTitle() { state = 'title'; for (const id of ['end', 'pause', 'hud', 'touch', 'hint']) $(id).hidden = true; $('title').hidden = false; if (ac && ac.state === 'suspended') ac.resume(); resetFight(); renderDiffs(); }
 $('startBtn').onclick = startGame; $('againBtn').onclick = startGame; $('restartBtn').onclick = startGame;

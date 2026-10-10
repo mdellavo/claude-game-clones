@@ -76,6 +76,23 @@ h2{font-family:var(--display);font-size:clamp(34px,6vw,58px);line-height:.92;mar
 .tally dd.hi{color:var(--gold)}
 .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 
+/* ---------- online leaderboard ---------- */
+#lb{display:flex;flex-direction:column;gap:10px;padding-top:14px;border-top:1px solid rgba(238,245,251,.14)}
+#lbForm{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin:0}
+#lbName{flex:1 1 150px;min-width:0;max-width:240px;font-family:var(--mono);font-size:16px;letter-spacing:.1em;text-transform:uppercase;color:var(--snow);
+  background:rgba(238,245,251,.06);border:1px solid rgba(238,245,251,.3);border-left:2px solid var(--gold);border-radius:0;padding:10px 12px}
+#lbName:focus{outline:none;border-color:var(--gold)}
+#lbName::placeholder{color:rgba(238,245,251,.4)}
+#lbSend:disabled{opacity:.5;cursor:default}
+#lbList{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(5,auto);grid-auto-flow:column;gap:3px 22px;
+  font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+#lbList li{display:flex;gap:10px;min-width:0;color:rgba(238,245,251,.8)}
+#lbList li span:first-child{color:rgba(238,245,251,.45)}
+#lbList li span:nth-child(2){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:pre}
+#lbList li.me, #lbList li.me span:first-child{color:var(--gold)}
+@media (min-width:641px){ #over .panel{margin-top:auto;margin-bottom:auto} }
+@media (max-width:640px){ #lbList{grid-template-columns:1fr;grid-template-rows:none;grid-auto-flow:row} }
+
 /* ---------- touch ---------- */
 #touch{position:fixed;inset:auto 0 0 0;height:190px;z-index:8;pointer-events:none;display:none}
 body.touch #touch{display:block}
@@ -148,6 +165,15 @@ body.touch #chute{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
     <p class="lede" id="overText"></p>
     <dl class="tally" id="tally"></dl>
     <div class="row"><button class="btn" id="again" type="button">Fly it again</button></div>
+    <div id="lb" hidden>
+      <div class="tag">VALLEY BOARD · TOP 10</div>
+      <form id="lbForm" autocomplete="off">
+        <input id="lbName" type="text" maxlength="12" placeholder="CALLSIGN" aria-label="Name for the leaderboard" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="send">
+        <button class="btn ghost" id="lbSend" type="submit">Log score</button>
+      </form>
+      <p class="fine" id="lbNote"></p>
+      <ol id="lbList"></ol>
+    </div>
   </div>
 </div>
 
@@ -170,6 +196,29 @@ const rnd = (a, b) => b === undefined ? Math.random() * a : a + Math.random() * 
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
 const isTouch = matchMedia('(pointer: coarse)').matches;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'granite-line';
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }),
+      signal: ctl.signal,
+    } : { signal: ctl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const hash = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
 
 /* ---------- the valley ----------
@@ -589,7 +638,45 @@ function finish(tag, text, landed, bonus){
     ['PROXIMITY', `${S.proxT.toFixed(1)} S`, 0], ['LANDING', bonus ? fmt(bonus) : '—', 0], ['BEST', fmt(best), 1],
   ].map(([k, v, hi]) => `<div><dt>${k}</dt><dd class="${hi ? 'hi' : ''}">${v}</dd></div>`).join('');
   $('hud').hidden = true; $('chute').hidden = true; $('over').hidden = false; $('again').focus();
+  lbOpen(total);
 }
+
+/* ---------- online leaderboard ---------- */
+const LB = { run: 0, score: 0, sent: false };
+function lbList(scores, rank){
+  const ol = $('lbList'); ol.textContent = '';
+  (Array.isArray(scores) ? scores : []).slice(0, 10).forEach((s, i) => {
+    const li = document.createElement('li'); if (i + 1 === rank) li.className = 'me';
+    for (const t of [String(i + 1).padStart(2, '0'), String(s.name), fmt(s.score)]){ const sp = document.createElement('span'); sp.textContent = t; li.append(sp); }
+    ol.append(li);
+  });
+  return ol.childElementCount;
+}
+async function lbOpen(total){
+  if (!LB_URL) return;
+  const run = ++LB.run; LB.score = total; LB.sent = false;
+  let name = ''; try { name = localStorage.getItem('granite-name') || ''; } catch (e){}
+  $('lbName').value = name.slice(0, 12); $('lbSend').disabled = false;
+  $('lbForm').hidden = total <= 0; $('lbList').textContent = ''; $('lbNote').textContent = 'LOADING BOARD…';
+  $('lb').hidden = false;
+  const data = await lbFetch();
+  if (run !== LB.run || LB.sent) return;
+  $('lbNote').textContent = !data ? 'BOARD OFFLINE' : lbList(data.scores) ? '' : 'NO FLIGHTS ON THE BOARD YET';
+}
+async function lbSubmit(){
+  if (!LB_URL || LB.sent || S.state !== 'over' || LB.score <= 0) return;
+  const run = LB.run, name = $('lbName').value.toUpperCase().trim().slice(0, 12) || 'ANON';
+  LB.sent = true; $('lbSend').disabled = true; $('lbNote').textContent = 'SENDING…';
+  try { localStorage.setItem('granite-name', name); } catch (e){}
+  const data = await lbFetch({ name, score: LB.score });
+  if (run !== LB.run) return;
+  if (!data){ LB.sent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'BOARD OFFLINE — SCORE NOT SENT'; return; }
+  $('lbForm').hidden = true; lbList(data.scores, data.rank);
+  $('lbNote').textContent = data.rank ? `LOGGED — YOU RANK #${data.rank}` : 'LOGGED — OFF THE BOARD THIS TIME';
+}
+$('lbForm').addEventListener('submit', (e) => { e.preventDefault(); lbSubmit(); });
+/* keep typing in the name field away from the flight keys and the Enter-to-restart shortcut */
+for (const ev of ['keydown', 'keyup', 'keypress']) $('lb').addEventListener(ev, (e) => e.stopPropagation());
 
 /* ---------- camera, flyer pose, HUD ---------- */
 const camLook = new THREE.Vector3();
@@ -657,7 +744,7 @@ function updateHUD(){
 /* ---------- flow ---------- */
 function begin(){
   ac(); if (A.ctx && A.ctx.state === 'suspended') A.ctx.resume();
-  reset(); S.state = 'fly';
+  reset(); S.state = 'fly'; LB.run++; $('lb').hidden = true;
   $('title').hidden = true; $('over').hidden = true; $('pause').hidden = true; $('hud').hidden = false;
   if (isTouch) document.body.classList.add('touch');
   call('EXIT', 'DIVE TO BUILD SPEED', 'good');
