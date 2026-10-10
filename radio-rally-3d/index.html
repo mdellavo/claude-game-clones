@@ -124,7 +124,30 @@
     #lights b { width: 28px; height: 28px; }
   }
   #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+/* leaderboard viewer opened from the title screen */
+#lbOpenBtn[hidden],#lbView[hidden]{display:none!important}
+#lbOpenBtn{pointer-events:auto}
+#lbView{position:fixed;inset:0;z-index:1000;display:flex;padding:16px;overflow:auto;background:rgba(5,7,12,.74);touch-action:pan-y;pointer-events:auto}
+#lbView .lbv{width:min(360px,100%);margin:auto;padding:18px;display:flex;flex-direction:column;gap:12px;background:rgba(13,15,24,.97);color:#f2f2f2;border:1px solid rgba(255,255,255,.28);border-radius:10px;text-align:left}
+#lbView .lbv-h{font-size:17px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+#lbView .lbv-n{font-size:14px;opacity:.8;margin:0}
+#lbView .lbv-n:empty{display:none}
+#lbViewList{list-style:none;margin:0;padding:0;font-size:15px;line-height:1.5;font-variant-numeric:tabular-nums}
+#lbViewList li{display:grid;grid-template-columns:2.2em 1fr auto;gap:10px}
+#lbViewList li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:pre}
+#lbViewClose{align-self:flex-start;margin:0}
+#lbOpenBtn,#lbViewClose{font:inherit;font-size:12px;color:#111;background:var(--yellow);border:3px solid #fff;border-radius:8px;padding:12px 14px;cursor:pointer}
+#lbOpenBtn{display:inline-block;margin-top:22px}
+#lbView .lbv-h,#lbView .lbv-n,#lbViewList{font-size:11px;line-height:1.9}
 </style>
+<div id="lbView" role="dialog" aria-modal="true" aria-label="Leaderboard" hidden>
+  <div class="lbv">
+    <div class="lbv-h">Leaderboard · Top 10</div>
+    <p class="lbv-n" id="lbViewNote" aria-live="polite"></p>
+    <ol id="lbViewList"></ol>
+    <button id="lbViewClose" type="button">CLOSE</button>
+  </div>
+</div>
 <script type="importmap">
   { "imports": { "three": "./node_modules/three/build/three.module.js" } }
 </script>
@@ -160,7 +183,7 @@
   <div class="logo">R.C. PRO-AM<br><span>3D</span></div>
   <div class="tag">RADIO-CONTROLLED OFF-ROAD RACING</div>
   <div class="press">PRESS ENTER</div>
-  <button id="touch-start" data-action="confirm" type="button">TAP TO RACE</button>
+  <button id="touch-start" data-action="confirm" type="button">TAP TO RACE</button><button id="lbOpenBtn" type="button" hidden>LEADERBOARD</button>
   <div class="controls">
     <b>↑ / W / X</b> ACCELERATE &nbsp; <b>↓ / S / Z</b> BRAKE<br>
     <b>← →  / A D</b> STEER<br>

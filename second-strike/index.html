@@ -99,6 +99,18 @@ h2{font:800 clamp(34px,8vw,64px) Oxanium,sans-serif;margin:0;letter-spacing:.06e
   #dcT{font-size:11px;max-width:90px}
   .nations{grid-template-columns:repeat(2,1fr)}
 }
+/* leaderboard viewer opened from the title screen */
+#lbOpenBtn[hidden],#lbView[hidden]{display:none!important}
+#lbOpenBtn{pointer-events:auto}
+#lbView{position:fixed;inset:0;z-index:1000;display:flex;padding:16px;overflow:auto;background:rgba(5,7,12,.74);touch-action:pan-y;pointer-events:auto}
+#lbView .lbv{width:min(360px,100%);margin:auto;padding:18px;display:flex;flex-direction:column;gap:12px;background:rgba(13,15,24,.97);color:#f2f2f2;border:1px solid rgba(255,255,255,.28);border-radius:10px;text-align:left}
+#lbView .lbv-h{font-size:17px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+#lbView .lbv-n{font-size:14px;opacity:.8;margin:0}
+#lbView .lbv-n:empty{display:none}
+#lbViewList{list-style:none;margin:0;padding:0;font-size:15px;line-height:1.5;font-variant-numeric:tabular-nums}
+#lbViewList li{display:grid;grid-template-columns:2.2em 1fr auto;gap:10px}
+#lbViewList li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:pre}
+#lbViewClose{align-self:flex-start;margin:0}
 </style>
 
 <canvas id="c"></canvas>
@@ -126,7 +138,7 @@ h2{font:800 clamp(34px,8vw,64px) Oxanium,sans-serif;margin:0;letter-spacing:.06e
     <p class="lede">Nine nuclear powers. Grow your sphere of influence while the clock counts down from DEFCON 5. Build silos and missile defense, research longer reach and bigger warheads. At DEFCON 1 the launch codes unlock. Be the last nation standing.</p>
     <div class="nations" id="nations"></div>
     <p class="keys" id="keysD">Drag to spin the globe · scroll to zoom · click a country to act on it · click a spot on an enemy to target it</p>
-    <button class="big" id="startBtn" type="button">TAKE COMMAND</button>
+    <button class="big" id="startBtn" type="button">TAKE COMMAND</button><button class="btn" id="lbOpenBtn" type="button" hidden>LEADERBOARD</button>
   </div>
 </div>
 <div class="screen" id="end" hidden>
@@ -145,6 +157,14 @@ h2{font:800 clamp(34px,8vw,64px) Oxanium,sans-serif;margin:0;letter-spacing:.06e
   </div>
 </div>
 
+<div id="lbView" role="dialog" aria-modal="true" aria-label="Leaderboard" hidden>
+  <div class="lbv">
+    <div class="lbv-h">Leaderboard · Top 10</div>
+    <p class="lbv-n" id="lbViewNote" aria-live="polite"></p>
+    <ol id="lbViewList"></ol>
+    <button class="btn" id="lbViewClose" type="button">CLOSE</button>
+  </div>
+</div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
@@ -188,6 +208,39 @@ async function lbFetch(entry) {
     clearTimeout(timer);
   }
 }
+// Leaderboard button on the title screen: opens the top 10 in a pop-up. Hidden while LB_URL is empty.
+(() => {
+  const btn = document.getElementById('lbOpenBtn'), view = document.getElementById('lbView');
+  if (!LB_URL || !btn || !view) return;
+  const list = document.getElementById('lbViewList'), note = document.getElementById('lbViewNote'), close = document.getElementById('lbViewClose');
+  const show = (n) => fmtPop(n);
+  let down = false, held = false;   // a key still down when it closed the pop-up is swallowed until it is released
+  const shut = (byKey) => { view.hidden = true; held = !!byKey && down; btn.focus({ preventScroll: true }); };
+  btn.hidden = false;
+  btn.addEventListener('click', async () => {
+    view.hidden = false; list.textContent = ''; note.textContent = 'Loading…'; close.focus({ preventScroll: true });
+    const d = await lbFetch();
+    if (view.hidden) return;
+    if (!d || !Array.isArray(d.scores)) { note.textContent = 'Leaderboard offline.'; return; }
+    note.textContent = d.scores.length ? '' : 'No scores yet.';
+    d.scores.slice(0, 10).forEach((s, i) => {
+      const li = document.createElement('li');
+      for (const t of [i + 1 + '.', String(s.name), show(Number(s.score) || 0)]) { const sp = document.createElement('span'); sp.textContent = t; li.appendChild(sp); }
+      list.appendChild(li);
+    });
+  });
+  close.addEventListener('click', (e) => shut(e.detail === 0));
+  view.addEventListener('click', (e) => { if (e.target === view) shut(false); });
+  // Taps and keys must not reach the game while the pop-up is up (Enter or a tap would start a run behind it).
+  for (const el of [btn, view]) for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click']) el.addEventListener(t, (e) => e.stopPropagation());
+  for (const t of ['keydown', 'keyup', 'keypress']) addEventListener(t, (e) => {
+    if (t === 'keydown') down = true; else if (t === 'keyup') down = false;
+    if (held) { if (t === 'keyup') held = false; e.stopPropagation(); if (t === 'keydown') e.preventDefault(); return; }
+    if (view.hidden) return;
+    e.stopPropagation();
+    if (t === 'keydown' && e.key === 'Escape') shut(true);
+  }, true);
+})();
 
 /* ================= GEOGRAPHY ================= */
 function unwrap(pts) { const out = [pts[0].slice()]; for (let i = 1; i < pts.length; i++) { let lon = pts[i][0]; const p = out[i - 1][0]; while (lon - p > 180) lon -= 360; while (lon - p < -180) lon += 360; out.push([lon, pts[i][1]]); } return out; }

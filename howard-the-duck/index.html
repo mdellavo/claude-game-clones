@@ -1593,7 +1593,13 @@ async function init(){
   updateHUD();
   const best = loadBest();
   if (best) $('best').textContent = `Best time home: ${fmtTime(best)}. Follow the beams of light, and stop by Beverly's apartment downtown when you need patching up.`;
-  lbFetch().then((r) => { if (r && Array.isArray(r.scores) && r.scores.length){ lbList($('tLbList'), r.scores); $('tLb').hidden = false; } });
+  // read the board once the first frame is out, so shader compilation cannot eat into the request timeout
+  requestAnimationFrame(() => setTimeout(() => lbFetch().then((r) => {
+    if (!r || !Array.isArray(r.scores)) return;
+    lbList($('tLbList'), r.scores);
+    if (!r.scores.length){ const li = document.createElement('li'); li.textContent = 'No times posted yet.'; $('tLbList').appendChild(li); }
+    $('tLb').hidden = false;
+  }), 200));
   const sb = $('startBtn'); sb.disabled = false; sb.textContent = 'Hit the streets'; sb.focus();
   requestAnimationFrame(frame);
 }

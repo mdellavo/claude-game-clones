@@ -178,10 +178,20 @@ export class App {
         h('button', { onclick: () => (sfx('click'), this.showSetup()) }, 'New Mission'),
         h('button', { onclick: () => (sfx('click'), this.quickMission()) }, 'Quick Random Mission'),
         h('button', { onclick: () => (sfx('click'), this.showHelp()) }, 'How to Play'),
+        LB_URL ? h('button', { onclick: () => (sfx('click'), this.showRanking()) }, 'Global Ranking') : null,
       ),
       h('div', { class: 'small', style: { maxWidth: '640px' } },
         'A tactical tribute to UFO: Enemy Unknown (1994). Interceptors have downed a UFO. Lead your Skyranger squad to the crash site, eliminate or capture the surviving aliens and recover alien technology.'),
     );
+  }
+
+  // Top 10 from the title menu; the same panel the debrief uses, without the submit form.
+  showRanking() {
+    const s = this.screen();
+    s.append(h('div', { class: 'panel' },
+      leaderboardPanel(null),
+      h('div', { class: 'row', style: { marginTop: '14px' } }, h('button', { onclick: () => this.showTitle() }, 'Back')),
+    ));
   }
 
   showHelp(onBack) {

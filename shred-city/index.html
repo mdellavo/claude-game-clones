@@ -96,6 +96,18 @@ body.touch #combo{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
 
 @media (max-width:640px){ .card{margin-left:0;padding:20px;transform:none} .screen{align-items:flex-start} #score{font-size:20px} }
 @media (prefers-reduced-motion:reduce){ .pop{animation-duration:.01s;animation-fill-mode:none} #vhs{display:none} }
+/* leaderboard viewer opened from the title screen */
+#lbOpenBtn[hidden],#lbView[hidden]{display:none!important}
+#lbOpenBtn{pointer-events:auto}
+#lbView{position:fixed;inset:0;z-index:1000;display:flex;padding:16px;overflow:auto;background:rgba(5,7,12,.74);touch-action:pan-y;pointer-events:auto}
+#lbView .lbv{width:min(360px,100%);margin:auto;padding:18px;display:flex;flex-direction:column;gap:12px;background:rgba(13,15,24,.97);color:#f2f2f2;border:1px solid rgba(255,255,255,.28);border-radius:10px;text-align:left}
+#lbView .lbv-h{font-size:17px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+#lbView .lbv-n{font-size:14px;opacity:.8;margin:0}
+#lbView .lbv-n:empty{display:none}
+#lbViewList{list-style:none;margin:0;padding:0;font-size:15px;line-height:1.5;font-variant-numeric:tabular-nums}
+#lbViewList li{display:grid;grid-template-columns:2.2em 1fr auto;gap:10px}
+#lbViewList li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:pre}
+#lbViewClose{align-self:flex-start;margin:0}
 </style>
 
 <canvas id="gl" aria-label="Shred City skateboarding game"></canvas>
@@ -122,7 +134,7 @@ body.touch #combo{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
       <dt>J · K · L</dt><dd>Kickflip · Grab (hold) · Shove-it</dd>
       <dt>P · M</dt><dd>Pause · Mute</dd>
     </dl>
-    <button class="btn" id="startBtn" disabled>Waxing curbs…</button>
+    <button class="btn" id="startBtn" disabled>Waxing curbs…</button><button class="btn" id="lbOpenBtn" type="button" hidden>Leaderboard</button>
     <p class="fine" id="best">Chain tricks without touching the ground and the points multiply. Land clean or lose them all.</p>
   </div>
 </section>
@@ -162,6 +174,14 @@ body.touch #combo{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
   <button class="tb" id="tGrab" type="button">GRAB</button>
 </div>
 
+<div id="lbView" role="dialog" aria-modal="true" aria-label="Leaderboard" hidden>
+  <div class="lbv">
+    <div class="lbv-h">Leaderboard · Top 10</div>
+    <p class="lbv-n" id="lbViewNote" aria-live="polite"></p>
+    <ol id="lbViewList"></ol>
+    <button class="btn" id="lbViewClose" type="button">Close</button>
+  </div>
+</div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
 <script type="module">
 import * as THREE from 'three';
@@ -196,6 +216,39 @@ async function lbFetch(entry) {
     clearTimeout(timer);
   }
 }
+// Leaderboard button on the title screen: opens the top 10 in a pop-up. Hidden while LB_URL is empty.
+(() => {
+  const btn = document.getElementById('lbOpenBtn'), view = document.getElementById('lbView');
+  if (!LB_URL || !btn || !view) return;
+  const list = document.getElementById('lbViewList'), note = document.getElementById('lbViewNote'), close = document.getElementById('lbViewClose');
+  const show = (n) => n.toLocaleString();
+  let down = false, held = false;   // a key still down when it closed the pop-up is swallowed until it is released
+  const shut = (byKey) => { view.hidden = true; held = !!byKey && down; btn.focus({ preventScroll: true }); };
+  btn.hidden = false;
+  btn.addEventListener('click', async () => {
+    view.hidden = false; list.textContent = ''; note.textContent = 'Loading…'; close.focus({ preventScroll: true });
+    const d = await lbFetch();
+    if (view.hidden) return;
+    if (!d || !Array.isArray(d.scores)) { note.textContent = 'Leaderboard offline.'; return; }
+    note.textContent = d.scores.length ? '' : 'No scores yet.';
+    d.scores.slice(0, 10).forEach((s, i) => {
+      const li = document.createElement('li');
+      for (const t of [i + 1 + '.', String(s.name), show(Number(s.score) || 0)]) { const sp = document.createElement('span'); sp.textContent = t; li.appendChild(sp); }
+      list.appendChild(li);
+    });
+  });
+  close.addEventListener('click', (e) => shut(e.detail === 0));
+  view.addEventListener('click', (e) => { if (e.target === view) shut(false); });
+  // Taps and keys must not reach the game while the pop-up is up (Enter or a tap would start a run behind it).
+  for (const el of [btn, view]) for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click']) el.addEventListener(t, (e) => e.stopPropagation());
+  for (const t of ['keydown', 'keyup', 'keypress']) addEventListener(t, (e) => {
+    if (t === 'keydown') down = true; else if (t === 'keyup') down = false;
+    if (held) { if (t === 'keyup') held = false; e.stopPropagation(); if (t === 'keydown') e.preventDefault(); return; }
+    if (view.hidden) return;
+    e.stopPropagation();
+    if (t === 'keydown' && e.key === 'Escape') shut(true);
+  }, true);
+})();
 
 // ------------------------------------------------------------------ constants
 const G = 24, OLLIE_V = 7.6, CURB_X = 6.4, EDGE = 8.8, CURB_H = .16;

@@ -47,6 +47,39 @@
       clearTimeout(timer);
     }
   }
+  // Leaderboard button on the title screen: opens the top 10 in a pop-up. Hidden while LB_URL is empty.
+  (() => {
+    const btn = document.getElementById('lbOpenBtn'), view = document.getElementById('lbView');
+    if (!LB_URL || !btn || !view) return;
+    const list = document.getElementById('lbViewList'), note = document.getElementById('lbViewNote'), close = document.getElementById('lbViewClose');
+    const show = (n) => String(n);
+    let down = false, held = false;   // a key still down when it closed the pop-up is swallowed until it is released
+    const shut = (byKey) => { view.hidden = true; held = !!byKey && down; btn.focus({ preventScroll: true }); };
+    btn.hidden = false;
+    btn.addEventListener('click', async () => {
+      view.hidden = false; list.textContent = ''; note.textContent = 'Loading…'; close.focus({ preventScroll: true });
+      const d = await lbFetch();
+      if (view.hidden) return;
+      if (!d || !Array.isArray(d.scores)) { note.textContent = 'Leaderboard offline.'; return; }
+      note.textContent = d.scores.length ? '' : 'No scores yet.';
+      d.scores.slice(0, 10).forEach((s, i) => {
+        const li = document.createElement('li');
+        for (const t of [i + 1 + '.', String(s.name), show(Number(s.score) || 0)]) { const sp = document.createElement('span'); sp.textContent = t; li.appendChild(sp); }
+        list.appendChild(li);
+      });
+    });
+    close.addEventListener('click', (e) => shut(e.detail === 0));
+    view.addEventListener('click', (e) => { if (e.target === view) shut(false); });
+    // Taps and keys must not reach the game while the pop-up is up (Enter or a tap would start a run behind it).
+    for (const el of [btn, view]) for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click']) el.addEventListener(t, (e) => e.stopPropagation());
+    for (const t of ['keydown', 'keyup', 'keypress']) addEventListener(t, (e) => {
+      if (t === 'keydown') down = true; else if (t === 'keyup') down = false;
+      if (held) { if (t === 'keyup') held = false; e.stopPropagation(); if (t === 'keydown') e.preventDefault(); return; }
+      if (view.hidden) return;
+      e.stopPropagation();
+      if (t === 'keydown' && e.key === 'Escape') shut(true);
+    }, true);
+  })();
 
   // ---------- comms ----------
   const pctx = $('portrait').getContext('2d');

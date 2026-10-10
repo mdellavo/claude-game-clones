@@ -779,7 +779,14 @@ $('lbForm').addEventListener('submit', async e => {
 });
 // keep typing a name away from the game's window key handlers
 for (const ev of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(ev, e => e.stopPropagation());
-function lbTitle() { if (LB_URL) lbFetch().then(d => { if (d && Array.isArray(d.scores) && d.scores.length) { lbRender($('lbTitleList'), d.scores); $('lbTitle').hidden = false; } }); }
+function lbTitle() {
+  if (LB_URL) lbFetch().then(d => {
+    if (!d || !Array.isArray(d.scores)) return;
+    lbRender($('lbTitleList'), d.scores);
+    if (!d.scores.length) { const li = document.createElement('li'); li.style.display = 'block'; li.textContent = 'No rounds posted yet.'; $('lbTitleList').appendChild(li); }
+    $('lbTitle').hidden = false;
+  });
+}
 function showBest() { const b = store.get('tt-best', null); $('best').textContent = b === null ? '' : `Best round: ${fmtRel(b)}`; }
 
 /* ================= LOOP ================= */
