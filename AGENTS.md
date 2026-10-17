@@ -5,7 +5,7 @@ Notes for agents working in this repo. Humans are welcome to read it too.
 ## What this is
 
 A collection of browser games, one per subdirectory, each a remake of or homage to an older
-game. Every game is also published as an artifact on claude.ai, and `README.md` links to it.
+game. Every game is also published as an artifact on claude.ai, but nothing in the repo links to it.
 Each game was written from a single prompt, quoted in the README's Prompt column.
 
 ## Layout
@@ -13,7 +13,7 @@ Each game was written from a single prompt, quoted in the README's Prompt column
 ```
 <game>/index.html     the game (most are one self-contained file)
 screenshots/          <game>-1.jpg, -2.jpg, -3.jpg — used by the README table
-README.md             one table row per game: name, description, prompt, play link, screenshots
+README.md             one table row per game: name, description, prompt, screenshots
 index.html            launcher page for GitHub Pages; builds its tiles from the README table at runtime,
                       and index.html#<folder> opens a single game's page instead of the grid
 tools/build-site.mjs  assembles _site/ (launcher + every game, Vite games built) for Pages
@@ -90,9 +90,10 @@ and the player surviving a crash or wipeout without getting stuck.
 
 ## Artifacts
 
-Each game is published at its own claude.ai URL, linked from the README's Play column.
+Each game is published at its own claude.ai URL. Keep those URLs out of the README and the launcher;
+find a game's URL with the Artifact tool's `list` action (artifacts are titled after the game).
 
-- Republish to the **same** URL after changing a game, or the README link goes stale.
+- Republish to the **same** URL after changing a game, so the published copy stays current.
 - A game with extra files (Polygon Wing) publishes them alongside the page.
 - Artifacts published from an earlier session must be read before they can be republished.
   A published page is wrapped in claude.ai's own `<html><head>…<body>`; strip that wrapper
@@ -106,11 +107,11 @@ The launcher parses these rows, so keep the cell layout exactly as below: the na
 followed by `<br>` and the folder in backticks, and the screenshots as `<img src="…">` tags.
 A new top-level folder with an `index.html` is picked up by `tools/build-site.mjs` automatically.
 
-Add one row, in alphabetical order by display name, with all five columns filled in:
+Add one row, in alphabetical order by display name, with all four columns filled in:
 name and folder, description, the prompt quoted in `<i>"…"</i>` with only the description of the game kept: drop setup boilerplate
 such as "create a new subdirectory", "webgl game", "update the readme" or "publish and push", but keep
 the user's own words otherwise (typos included,
-follow-ups after `<br><br>Follow-ups:`), the claude.ai link, and three screenshots at
+follow-ups after `<br><br>Follow-ups:`), and three screenshots at
 `width="200"`. Save screenshots as `screenshots/<game>-1.jpg` through `-3.jpg`, around
 1280×720, JPEG quality 85.
 
