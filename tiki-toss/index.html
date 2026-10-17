@@ -296,7 +296,7 @@ function seeded(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math
 /* ================= RENDERER ================= */
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.6 : 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 1.25));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.08;
 const scene = new THREE.Scene();
@@ -929,7 +929,7 @@ function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h
 addEventListener('resize', resize);
 for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, resize);
 let last = performance.now(), ftAvg = 16, adaptT = 0;
-const DPR_MAX = Math.min(devicePixelRatio, isTouch ? 1.6 : 2); let dpr = DPR_MAX;
+const DPR_MAX = Math.min(devicePixelRatio, isTouch ? 1.5 : 1.25); let dpr = DPR_MAX;
 function frame(now) {
   requestAnimationFrame(frame);
   const raw = now - last, dt = Math.min(.05, raw / 1000); last = now;

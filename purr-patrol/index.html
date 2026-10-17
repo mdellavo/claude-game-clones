@@ -399,7 +399,7 @@ function seeded(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math
 /* ================= RENDERER ================= */
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.75 : 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 1.25));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;

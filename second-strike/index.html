@@ -438,7 +438,7 @@ let factions = [], human = null;
 /* ================= RENDERER ================= */
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-const DPR = Math.min(devicePixelRatio, isTouch ? 1.6 : 2); renderer.setPixelRatio(DPR);
+const DPR = Math.min(devicePixelRatio, isTouch ? 1.5 : 1.25); renderer.setPixelRatio(DPR);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x01040a);
 const camera = new THREE.PerspectiveCamera(42, 1, 1, 5000); camera.position.set(0, 80, 320);

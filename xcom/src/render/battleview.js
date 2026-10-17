@@ -17,7 +17,7 @@ export class BattleView {
     this.listeners = {};
 
     const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: true }));
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, matchMedia('(pointer: coarse)').matches ? 1.5 : 1.25));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
@@ -33,7 +33,7 @@ export class BattleView {
     sun.position.set(this.map.w * 0.2, 40, this.map.l * 0.1);
     sun.target.position.set(this.map.w / 2, 0, this.map.l / 2);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.mapSize.set(2048, 2048);
     const half = Math.max(this.map.w, this.map.l) * 0.75;
     Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 140 });
     sun.shadow.bias = -0.0008;

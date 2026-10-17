@@ -422,7 +422,7 @@ function terrainSlope(u, v){ return (terrainY(u + .6, v) - terrainY(u - .6, v)) 
 /* ============================ renderer ============================ */
 const canvas = $('gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 1.5 : 1.25));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const HAZE = new THREE.Color(0xcfe4f2);

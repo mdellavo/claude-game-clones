@@ -354,8 +354,11 @@ const TAU = Math.PI * 2;
 
 /* ================= renderer ================= */
 const canvas = $('gl');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-let DPR = Math.min(devicePixelRatio || 1, 1.5);
+// desktop draws through the bloom composer, whose own target does the anti-aliasing, so the screen buffer skips MSAA
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: isTouch, powerPreference: 'high-performance' });
+// render scale: capped, then trimmed at runtime when frames run long (see adaptRes)
+const DPR_MAX = Math.min(devicePixelRatio || 1, 1.25), DPR_MIN = Math.min(DPR_MAX, .7);
+let DPR = DPR_MAX;
 renderer.setPixelRatio(DPR);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
@@ -372,7 +375,7 @@ scene.environmentIntensity = 0.5;
 // bloom on desktop only; phones render straight to the screen
 let composer = null, bloom = null;
 if (!isTouch) {
-  composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }));
+  composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 2 }));
   composer.addPass(new RenderPass(scene, camera));
   bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.4, 1.0);
   composer.addPass(bloom);
@@ -537,10 +540,10 @@ paintBulbs(0);
 
 // lights: a cool fill, warm bulbs under the roof, a wash on the counter
 scene.add(new THREE.HemisphereLight(0x8a7cff, 0x2a1020, .6));
-for (const [x, z, i] of [[-3.4, -4.2, 5], [3.4, -4.2, 5], [-3.4, -9.6, 6.5], [3.4, -9.6, 6.5], [0, -12.4, 7]]) {
+// three lights: every balloon pixel pays for each one, so keep the count low
+for (const [x, z, i] of [[-2.6, -4.6, 7.5], [2.6, -4.6, 7.5], [0, -10.6, 12]]) {
   const l = new THREE.PointLight(0xffcf8a, i, 13, 1.6); l.position.set(x, BOOTH.roof - .4, z); scene.add(l);
 }
-{ const l = new THREE.PointLight(0xffb070, 1.6, 5, 2); l.position.set(0, 3.0, -.6); scene.add(l); }
 
 /* ================= balloons ================= */
 const balloonGeo = (() => {
@@ -556,11 +559,11 @@ function balloonMat(type, col) {
   const key = type + ':' + col;
   if (matCache.has(key)) return matCache.get(key);
   let m;
-  const base = { roughness: .26, clearcoat: 1, clearcoatRoughness: .12 };
-  if (type === 'gold') m = new THREE.MeshPhysicalMaterial({ ...base, map: TEX.gold, metalness: .75, roughness: .22, emissive: 0x4a2a00, emissiveIntensity: .6 });
-  else if (type === 'clock') m = new THREE.MeshPhysicalMaterial({ ...base, map: TEX.clock, emissive: 0x0c4a44, emissiveIntensity: .5 });
-  else if (type === 'bomb') m = new THREE.MeshPhysicalMaterial({ ...base, map: TEX.bomb, roughness: .3, emissive: 0x3a0008, emissiveIntensity: 1 });
-  else m = new THREE.MeshPhysicalMaterial({ ...base, color: col, emissive: col, emissiveIntensity: .07, sheen: .3, sheenColor: 0xffffff });
+  const base = { roughness: .2, envMapIntensity: 1.3 };   // plain standard material: the glossy look comes from the environment map
+  if (type === 'gold') m = new THREE.MeshStandardMaterial({ ...base, map: TEX.gold, metalness: .75, roughness: .22, emissive: 0x4a2a00, emissiveIntensity: .6 });
+  else if (type === 'clock') m = new THREE.MeshStandardMaterial({ ...base, map: TEX.clock, emissive: 0x0c4a44, emissiveIntensity: .5 });
+  else if (type === 'bomb') m = new THREE.MeshStandardMaterial({ ...base, map: TEX.bomb, roughness: .3, emissive: 0x3a0008, emissiveIntensity: 1 });
+  else m = new THREE.MeshStandardMaterial({ ...base, color: col, emissive: col, emissiveIntensity: .07 });
   matCache.set(key, m);
   return m;
 }
@@ -1318,8 +1321,24 @@ function step(dt) {
   updatePellets(dt);
 }
 
+// adaptive resolution: if most frames run long for a second or so (a slow or throttling GPU), render fewer
+// pixels, and drop bloom once at the floor; creep back up after a long run of smooth frames
+const adMs = new Float32Array(72); let adN = 0, adGood = 0;
+function adaptRes(ms) {
+  if (state !== 'play' && state !== 'intro') return;
+  adMs[adN++] = Math.min(ms, 200); if (adN < adMs.length) return;
+  adN = 0; const med = adMs.slice().sort()[adMs.length >> 1];
+  if (med > 21) {
+    adGood = 0;
+    if (DPR > DPR_MIN) { const was = DPR; DPR = Math.max(DPR_MIN, DPR * .85); resize(); DBG.log('resolution down', was.toFixed(2), '->', DPR.toFixed(2), 'median', med.toFixed(1) + 'ms'); }
+    else if (composer && bloomOn) { bloomOn = false; DBG.log('bloom off: still slow at the lowest resolution'); }
+  } else if (med < 17.5 && DPR < DPR_MAX) { if (++adGood >= 6) { const was = DPR; DPR = Math.min(DPR_MAX, DPR * 1.1); adGood = 0; resize(); DBG.log('resolution up', was.toFixed(2), '->', DPR.toFixed(2)); } }
+  else adGood = 0;
+}
+let bloomOn = true, menuFrame = 0;
 function frame(now) {
   requestAnimationFrame(frame);
+  adaptRes(now - lastTick);
   const dt = Math.min(.05, (now - lastTick) / 1000 || 0); lastTick = now;
   if (state !== 'paused') step(dt);
   const t = gameTime;
@@ -1328,7 +1347,9 @@ function frame(now) {
   if (state !== 'paused') { updateSling(dt); updateBalloons(dt, t); updateParticles(dt); }
   matCache.forEach((m, k) => { if (k.startsWith('bomb')) m.emissiveIntensity = .6 + Math.sin(t * 6) * .5; });
   if (state !== 'title' && state !== 'over') updateHUD();
-  if (composer) composer.render(); else renderer.render(scene, camera);
+  // menus need far less: nothing changes while paused, and the title and end screens run at half rate
+  if (state === 'paused') { if (menuFrame++ > 1) return; } else if (state === 'title' || state === 'over') { if (menuFrame++ & 1) return; } else menuFrame = 0;
+  if (composer && bloomOn) composer.render(); else renderer.render(scene, camera);
 }
 function resize() {
   const w = innerWidth, h = innerHeight;

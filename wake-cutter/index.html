@@ -612,7 +612,7 @@ function engineSet(rev, rush) {
 /* ============================ renderer & sky ============================ */
 const canvas = $('gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 1.5 : 1.25));
 const scene = new THREE.Scene();
 const HAZE = 0xd8bd97;
 scene.fog = new THREE.Fog(HAZE, 110, 430);

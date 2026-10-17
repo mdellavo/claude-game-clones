@@ -653,7 +653,7 @@ const ZT = {
 /* ============================ renderer ============================ */
 const canvas = $('gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 1.5 : 1.25));
 const scene = new THREE.Scene();
 const FOG = 0x060809;
 scene.background = new THREE.Color(FOG);

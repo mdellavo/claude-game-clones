@@ -422,7 +422,7 @@ const LINES = {
 /* ================= RENDERER ================= */
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-const DPR = Math.min(devicePixelRatio, isTouch ? 1.5 : 1.75);
+const DPR = Math.min(devicePixelRatio, isTouch ? 1.5 : 1.25);
 renderer.setPixelRatio(DPR); renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
 const scene = new THREE.Scene();
 const FOG = 0x0a1020;
