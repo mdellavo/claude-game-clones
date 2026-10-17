@@ -218,7 +218,8 @@
       if (p && p.catch) p.catch(err => push('w', ['fullscreen refused:', err && err.message]));
     } catch (err) { push('w', ['fullscreen failed:', err && err.message]); }
   }
-  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { push('g', [fsElement() ? 'entered fullscreen' : 'left fullscreen']); syncMenu(); });
+  // one event only: Chrome fires both fullscreenchange and webkitfullscreenchange, which logged every change twice
+  document.addEventListener('onfullscreenchange' in document ? 'fullscreenchange' : 'webkitfullscreenchange', () => { push('g', [fsElement() ? 'entered fullscreen' : 'left fullscreen']); syncMenu(); });
 
   // ---- menu ----
   function syncMenu() {
