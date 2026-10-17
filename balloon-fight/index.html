@@ -18,45 +18,34 @@
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none;}
   body{
-    background:radial-gradient(ellipse at 50% -10%, #3a2350 0%, #150a20 55%, #0a0511 100%);
+    background:#0a1f3d;
     color:var(--paper);
     font-family:"VT323",ui-monospace,monospace;
-    min-height:100vh;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    padding:28px 14px 40px;
+    -webkit-tap-highlight-color:transparent;
   }
-  .cabinet{
-    width:100%;
-    max-width:860px;
-    background:linear-gradient(180deg,var(--cabinet-1),var(--cabinet-2));
-    border-radius:18px;
-    padding:16px 16px 20px;
-    box-shadow:0 30px 70px var(--shadow), inset 0 0 0 2px #46315e, inset 0 0 40px rgba(0,0,0,.4);
-    position:relative;
-  }
-  .cabinet::before{
-    content:"";
-    position:absolute;
-    inset:6px;
-    border-radius:13px;
-    pointer-events:none;
-    box-shadow:inset 0 0 0 1px rgba(255,204,51,.18);
-  }
+  /* the whole viewport is the screen; HUD and touch controls float over the scene */
+  .cabinet{position:fixed;inset:0;}
   .marquee{
+    position:absolute;
+    z-index:2;
+    top:calc(8px + env(safe-area-inset-top));
+    left:calc(8px + env(safe-area-inset-left));
+    right:calc(46px + env(safe-area-inset-right));
     display:flex;
     align-items:center;
     justify-content:space-between;
     gap:12px;
-    padding:10px 14px;
-    margin-bottom:12px;
+    padding:6px 12px;
     border-radius:10px;
-    background:linear-gradient(180deg,#3a2451,#241432);
-    box-shadow:0 0 0 2px var(--trim-dim), inset 0 0 18px rgba(255,204,51,.06);
+    background:linear-gradient(180deg,rgba(58,36,81,.62),rgba(36,20,50,.62));
+    box-shadow:0 0 0 1px rgba(165,121,31,.6);
+    -webkit-backdrop-filter:blur(6px);
+    backdrop-filter:blur(6px);
+    pointer-events:none;
   }
+  .marquee button{pointer-events:auto;}
   .logo{
     font-family:"Press Start 2P",monospace;
     font-size:13px;
@@ -81,20 +70,15 @@
   }
   .hud .lives{display:flex;gap:3px;align-items:center;}
   .balloon-icon{width:11px;height:13px;border-radius:50% 50% 46% 46%;background:var(--danger);box-shadow:inset -2px -2px 0 rgba(0,0,0,.25);}
-  .screen-wrap{
-    position:relative;
-    border-radius:10px;
-    overflow:hidden;
-    background:var(--screen-frame);
-    box-shadow:0 0 0 7px var(--screen-frame), 0 0 0 9px #3a2451, inset 0 0 30px rgba(0,0,0,.6);
-  }
+  .screen-wrap{position:absolute;inset:0;overflow:hidden;}
   canvas{
     display:block;
     width:100%;
-    height:auto;
-    aspect-ratio:400/225;
+    height:100%;
     background:#0a1f3d;
+    touch-action:none;
   }
+  canvas:focus{outline:none;}
   .scanlines,.vignette{display:none}
   .scanlines{
     position:absolute;
@@ -119,8 +103,11 @@
     justify-content:center;
     gap:14px;
     text-align:center;
-    background:rgba(8,5,14,.82);
-    padding:5% 6%;
+    background:rgba(8,5,14,.72);
+    padding:calc(64px + env(safe-area-inset-top)) 6% calc(24px + env(safe-area-inset-bottom));
+    overflow-y:auto;
+    justify-content:safe center;
+    z-index:1;
   }
   .overlay[hidden]{display:none!important;}
   .overlay h1{
@@ -157,7 +144,6 @@
   .pixel-btn:active{box-shadow:0 1px 0 var(--trim-dim);transform:translateY(3px);}
   .pixel-btn:focus-visible{outline:3px solid var(--ok);outline-offset:2px;}
   .legend{
-    margin-top:14px;
     display:flex;
     flex-wrap:wrap;
     gap:10px 22px;
@@ -188,11 +174,18 @@
   .pausebtn:hover{border-color:var(--trim);color:var(--trim);}
   .touch-controls{
     display:none;
+    position:absolute;
+    z-index:2;
+    left:calc(14px + env(safe-area-inset-left));
+    right:calc(14px + env(safe-area-inset-right));
+    bottom:calc(14px + env(safe-area-inset-bottom));
     justify-content:space-between;
-    align-items:center;
+    align-items:flex-end;
     gap:10px;
-    margin-top:12px;
+    pointer-events:none;
   }
+  .touch-controls > *{pointer-events:auto;}
+  .touch-controls .right{display:flex;gap:10px;align-items:flex-end;}
   @media (hover:none) and (pointer:coarse){
     .touch-controls{display:flex;}
     .legend .kb-only{display:none;}
@@ -202,10 +195,11 @@
     width:56px;height:56px;
     border-radius:50%;
     border:2px solid var(--trim-dim);
-    background:linear-gradient(180deg,#3a2451,#241432);
+    background:linear-gradient(180deg,rgba(58,36,81,.6),rgba(36,20,50,.6));
     color:var(--trim);
     font-family:"Press Start 2P",monospace;
     font-size:16px;
+    pointer-events:auto;
     display:flex;align-items:center;justify-content:center;
     user-select:none;
     -webkit-user-select:none;
@@ -216,20 +210,23 @@
   .tbtn.zap{width:48px;height:48px;font-size:9px;}
   footer{
     text-align:center;
-    color:#6b5a86;
+    color:#8a78a6;
     font-size:14px;
-    margin-top:14px;
   }
   [hidden]{display:none!important;}
   /* phones: let the HUD drop under the logo instead of pushing the page sideways */
   @media (max-width:560px){
-    .marquee{flex-wrap:wrap;justify-content:center;row-gap:8px;}
+    .logo{display:none;}
+    .marquee{justify-content:center;}
     .hud{gap:12px;align-items:center;}
-    /* the title card has to fit a short 16:9 screen */
-    .overlay{gap:8px;padding:3% 5%;overflow-y:auto;justify-content:safe center;}
     .overlay h1{font-size:clamp(16px,6vw,24px);}
+  }
+  /* short screens (phone landscape): tighter title card */
+  @media (max-height:500px){
+    .marquee{padding:4px 10px;}
+    .overlay{gap:8px;padding-top:calc(52px + env(safe-area-inset-top));}
     .overlay p{font-size:14px;line-height:1.25;}
-    .overlay .blink{display:none;}
+    .overlay .blink,.overlay .legend,.overlay footer{display:none;}
   }
   /* online leaderboard (only shown when LB_URL is set) */
   #overlay-over.lb-on{gap:8px;}
@@ -253,7 +250,7 @@
   .lb-form .pixel-btn:disabled{opacity:.5;cursor:default;}
   .overlay p.lb-status{color:var(--trim);}
   .lb{
-    margin-top:14px;
+    width:min(100%,520px);
     padding:10px 14px 12px;
     border-radius:10px;
     background:linear-gradient(180deg,#3a2451,#241432);
@@ -426,6 +423,14 @@
       <p>Flap over rivals to pop their balloons. Get popped twice or touch the water and you're done. Reach the glowing perch and zap the sky to clear the board.</p>
       <button class="pixel-btn" id="btn-start">Press Start</button>
       <p class="blink" style="font-size:14px;">or tap Start / press Space</p>
+      <div class="legend">
+        <span class="kb-only"><kbd>&larr;</kbd><kbd>&rarr;</kbd> move</span>
+        <span class="kb-only"><kbd>Space</kbd> / <kbd>&uarr;</kbd> flap</span>
+        <span class="kb-only"><kbd>S</kbd> zap (on gold perch)</span>
+        <span class="kb-only"><kbd>P</kbd> pause</span>
+        <span>Pop rivals from above &middot; avoid the water &middot; land to refill balloons</span>
+      </div>
+      <footer>A browser reimagining of the 1984 NES classic &middot; procedural graphics, no original assets</footer>
     </div>
 
     <div class="overlay" id="overlay-pause" hidden>
@@ -450,21 +455,16 @@
     </div>
   </div>
 
-  <div class="legend">
-    <span class="kb-only"><kbd>&larr;</kbd><kbd>&rarr;</kbd> move</span>
-    <span class="kb-only"><kbd>Space</kbd> / <kbd>&uarr;</kbd> flap</span>
-    <span class="kb-only"><kbd>S</kbd> zap (on gold perch)</span>
-    <span class="kb-only"><kbd>P</kbd> pause</span>
-    <span>Pop rivals from above &middot; avoid the water &middot; land to refill balloons</span>
-  </div>
 
   <div class="touch-controls">
     <div class="dpad">
       <div class="tbtn" id="t-left" aria-label="Move left">&larr;</div>
       <div class="tbtn" id="t-right" aria-label="Move right">&rarr;</div>
     </div>
-    <div class="tbtn zap" id="t-zap" aria-label="Zap">ZAP</div>
-    <div class="tbtn flap" id="t-flap" aria-label="Flap">FLAP</div>
+    <div class="right">
+      <div class="tbtn zap" id="t-zap" aria-label="Zap">ZAP</div>
+      <div class="tbtn flap" id="t-flap" aria-label="Flap">FLAP</div>
+    </div>
   </div>
 
   <div class="lb" id="lb-board" hidden>
@@ -474,7 +474,6 @@
   </div>
 </div>
 
-<footer>A browser reimagining of the 1984 NES classic &middot; procedural graphics, no original assets</footer>
 
 <script id="sfxr-lib">
 // Wave shapes
@@ -1982,10 +1981,15 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
   try { lbName.value = (localStorage.getItem('balloonFightName') || '').slice(0, 12); } catch(e){}
 
-  // The board sits under the cabinet controls and only shows between runs.
+  // The board only shows between runs, inside whichever card (title or game over) is up.
   function lbSync(){
     const show = !!LB_URL && !!lbScores && (state==='TITLE' || state==='GAME_OVER');
-    document.getElementById('lb-board').hidden = !show;
+    const board = document.getElementById('lb-board');
+    board.hidden = !show;
+    if (show){
+      const host = document.getElementById(state==='TITLE' ? 'overlay-title' : 'overlay-over');
+      if (board.parentNode !== host) host.appendChild(board);
+    }
   }
   function lbRender(){
     const list = document.getElementById('lb-list');
@@ -2304,7 +2308,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   const scene = new THREE.Scene();
   const FOG = new THREE.Color(0x24406a);
   scene.fog = new THREE.Fog(FOG, 500, 2300);
-  const camera = new THREE.PerspectiveCamera(33.5, W / H, 2, 4000);
+  const camera = new THREE.PerspectiveCamera(33.5, W / H, 2, 7000);
   const CY = WATER_Y - H / 2, CAM_D = 382, CAM_UP = 30;
   const camBase = new THREE.Vector3(0, CY + CAM_UP, CAM_D), camLook = new THREE.Vector3(0, CY - 2, 0);
   camera.position.copy(camBase); camera.lookAt(camLook);
@@ -2458,10 +2462,27 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
         #include <colorspace_fragment>
       }`,
   };
-  const water = new Reflector(new THREE.PlaneGeometry(3200, 2000), { shader: WaterShader, textureWidth: 256, textureHeight: 144, clipBias: 0.003, color: 0x7f7f7f });
-  water.rotation.x = -Math.PI / 2; water.position.set(0, 0, -600); scene.add(water);
+  const water = new Reflector(new THREE.PlaneGeometry(7000, 4400), { shader: WaterShader, textureWidth: 256, textureHeight: 144, clipBias: 0.003, color: 0x7f7f7f });
+  water.rotation.x = -Math.PI / 2; water.position.set(0, 0, -400); scene.add(water);
 
   // ripples on the water when something splashes
+  // sea-mist curtains where the arena wraps, so riders fade out at one side rather than blinking out
+  // in plain view now that the scenery runs past the playfield's edges
+  const mistTex = canvasTex(64, 128, (g, w, h) => {
+    const gx = g.createLinearGradient(0, 0, w, 0);
+    gx.addColorStop(0, 'rgba(255,255,255,0)'); gx.addColorStop(.5, 'rgba(255,255,255,1)'); gx.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gx; g.fillRect(0, 0, w, h);
+    g.globalCompositeOperation = 'destination-in';
+    const gy = g.createLinearGradient(0, 0, 0, h);
+    gy.addColorStop(0, 'rgba(0,0,0,0)'); gy.addColorStop(.18, 'rgba(0,0,0,1)'); gy.addColorStop(1, 'rgba(0,0,0,1)');
+    g.fillStyle = gy; g.fillRect(0, 0, w, h);
+  });
+  const mistMat = new THREE.MeshBasicMaterial({ map: mistTex, color: 0x2a4a78, transparent: true, opacity: .92, depthWrite: false, fog: false });
+  for (const s of [-1, 1]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(44, 300), mistMat);
+    m.position.set(s * (W / 2 + HALF_W + 4), 135, 24); m.renderOrder = 5; scene.add(m);
+  }
+
   const ripples = [];
   const rippleGeo = new THREE.RingGeometry(0.82, 1, 40).rotateX(-Math.PI / 2);
   function ripple(x, big) {
@@ -2669,6 +2690,15 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     renderer.setPixelRatio(DPR); renderer.setSize(w, h, false);
     composer.setPixelRatio(DPR); composer.setSize(w, h);
     camera.aspect = w / h; camera.updateProjectionMatrix();
+    // the canvas is the whole viewport: dolly the camera so the playfield fits, with room for the HUD
+    // up top and, on a phone held sideways, for the thumb buttons at the sides
+    const landTouch = IS_TOUCH && w > h;
+    const padX = landTouch ? Math.min(320, w * .36) : 24, padY = landTouch ? 70 : 110;
+    const pxPerUnit = Math.min((w - padX) / (W + 2 * HALF_W), Math.max(1, h - padY) / (H + 6));
+    const k = Math.max(.75, h / (2 * Math.tan(camera.fov * Math.PI / 360) * pxPerUnit) / CAM_D);
+    camBase.set(0, CY + CAM_UP * k + (landTouch ? 0 : 8 * k), CAM_D * k);
+    camLook.set(0, CY - 2 + (landTouch ? 0 : 8 * k), 0);
+    scene.fog.near = 500 + (k - 1) * CAM_D; scene.fog.far = 2300 + (k - 1) * CAM_D;
     water.getRenderTarget().setSize(Math.max(64, Math.round(w * DPR * .34)), Math.max(36, Math.round(h * DPR * .34)));
     pMat.uniforms.uScale.value = h * DPR / (2 * Math.tan(camera.fov * Math.PI / 360));
   }
