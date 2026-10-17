@@ -24,6 +24,7 @@
     font-family:"VT323",ui-monospace,monospace;
     min-height:100vh;
     display:flex;
+    flex-direction:column;
     align-items:center;
     justify-content:center;
     padding:28px 14px 40px;
@@ -92,10 +93,9 @@
     width:100%;
     height:auto;
     aspect-ratio:400/225;
-    image-rendering:pixelated;
-    image-rendering:crisp-edges;
     background:#0a1f3d;
   }
+  .scanlines,.vignette{display:none}
   .scanlines{
     position:absolute;
     inset:0;
@@ -225,6 +225,11 @@
   @media (max-width:560px){
     .marquee{flex-wrap:wrap;justify-content:center;row-gap:8px;}
     .hud{gap:12px;align-items:center;}
+    /* the title card has to fit a short 16:9 screen */
+    .overlay{gap:8px;padding:3% 5%;overflow-y:auto;justify-content:safe center;}
+    .overlay h1{font-size:clamp(16px,6vw,24px);}
+    .overlay p{font-size:14px;line-height:1.25;}
+    .overlay .blink{display:none;}
   }
   /* online leaderboard (only shown when LB_URL is set) */
   #overlay-over.lb-on{gap:8px;}
@@ -1609,7 +1614,16 @@ var units = {
 }));
 
 </script>
-<script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 (function(){
   "use strict";
   const W = 400, H = 225;
@@ -1617,7 +1631,6 @@ var units = {
   const REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
 
   // ---------- persistent state ----------
   let highScore = 0;
@@ -1860,14 +1873,6 @@ var units = {
       if (p.life<=0) particles.splice(i,1);
     }
   }
-  function drawParticles(){
-    for (const p of particles){
-      ctx.globalAlpha = Math.max(0, p.life/p.maxLife);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x-p.r/2, p.y-p.r/2, p.r, p.r);
-    }
-    ctx.globalAlpha = 1;
-  }
 
   // ---------- player ----------
   function makePlayer(){
@@ -1929,21 +1934,6 @@ var units = {
         }
       }
     }
-  }
-  function drawFish(){
-    if (!fish) return;
-    ctx.save();
-    ctx.translate(fish.x, fish.y);
-    ctx.fillStyle = '#7fd4e8';
-    ctx.beginPath();
-    ctx.ellipse(0,0,9,5,0,0,Math.PI*2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(-8,0); ctx.lineTo(-14,-5); ctx.lineTo(-14,5); ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#0e3a45';
-    ctx.beginPath(); ctx.arc(5,-1,1.3,0,Math.PI*2); ctx.fill();
-    ctx.restore();
   }
 
   // ---------- lightning ----------
@@ -2109,6 +2099,7 @@ var units = {
   function killPlayer(){
     if (player.invuln > 0 || !player.alive) return;
     burst(player.x, player.y, '#ff4757', 14, 60);
+    if (player.y > WATER_Y - 24) ripple(player.x, true);
     playSfx('splash');
     lives--;
     DBG.log('player died', 'lives', lives, 'stage', stage, 'score', score);
@@ -2149,6 +2140,8 @@ var units = {
   }
   function destroyEnemy(en, scored){
     en.alive = false;
+    const fm = fallerModels.find(m => !m.visible);
+    if (fm){ fm.visible = true; fm.scale.setScalar(1); fallers.push({ m: fm, x: en.x, y: en.y, vx: en.vx * .5, vy: -60, spin: 0 }); }
     playSfx('destroy');
     burst(en.x, en.y, '#ffd23f', 16, 70);
     if (scored){ score += 200; }
@@ -2288,182 +2281,515 @@ var units = {
     }
   }
 
-  // ---------- drawing ----------
-  let t = 0;
-  function drawBackground(){
-    const g = ctx.createLinearGradient(0,0,0,WATER_Y);
-    g.addColorStop(0,'#0a1f3d');
-    g.addColorStop(1,'#1e5a86');
-    ctx.fillStyle = g;
-    ctx.fillRect(0,0,W,WATER_Y);
-
-    ctx.fillStyle = 'rgba(255,255,255,.06)';
-    for (let i=0;i<4;i++){
-      const cx = ((i*137 + (REDUCED_MOTION?0:t*4)) % (W+80)) - 40;
-      const cy = 30 + i*28;
-      ctx.beginPath();
-      ctx.ellipse(cx,cy,22,9,0,0,Math.PI*2);
-      ctx.ellipse(cx+16,cy+3,16,7,0,0,Math.PI*2);
-      ctx.fill();
-    }
-
-    const wg = ctx.createLinearGradient(0,WATER_Y,0,H);
-    wg.addColorStop(0,'#12879e');
-    wg.addColorStop(1,'#052f3d');
-    ctx.fillStyle = wg;
-    ctx.fillRect(0,WATER_Y,W,H-WATER_Y);
-    ctx.strokeStyle = 'rgba(255,255,255,.35)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let x=0;x<=W;x+=8){
-      const y = WATER_Y + Math.sin(x*0.1 + (REDUCED_MOTION?0:t*2.4))*1.5;
-      x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-  }
-
-  function drawPlatform(p){
-    ctx.save();
-    if (p.type === 'lightning'){
-      const pulse = REDUCED_MOTION ? 0.8 : 0.6+0.4*Math.sin(t*4);
-      ctx.fillStyle = `rgba(255,204,51,${0.25*pulse})`;
-      ctx.beginPath();
-      ctx.ellipse(p.x+p.w/2, p.y+p.h/2, p.w*0.9, p.h*1.8, 0, 0, Math.PI*2);
-      ctx.fill();
-      ctx.fillStyle = '#ffcc33';
-      ctx.strokeStyle = '#8a5f0f';
-      ctx.lineWidth = 2;
-      roundRect(p.x,p.y,p.w,p.h,4);
-      ctx.fill(); ctx.stroke();
-    } else if (p.type === 'shore'){
-      ctx.fillStyle = '#3f7f3a';
-      roundRect(p.x,p.y,p.w,p.h,3);
-      ctx.fill();
-      ctx.fillStyle = '#295c27';
-      ctx.fillRect(p.x, p.y+p.h-4, p.w, 4);
-    } else {
-      ctx.fillStyle = '#e8a262';
-      ctx.strokeStyle = '#8a4a24';
-      ctx.lineWidth = 2;
-      roundRect(p.x,p.y,p.w,p.h,5);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,.25)';
-      ctx.fillRect(p.x+3,p.y+2,p.w-6,2);
-    }
-    ctx.restore();
-  }
-  function roundRect(x,y,w,h,r){
-    ctx.beginPath();
-    ctx.moveTo(x+r,y);
-    ctx.arcTo(x+w,y,x+w,y+h,r);
-    ctx.arcTo(x+w,y+h,x,y+h,r);
-    ctx.arcTo(x,y+h,x,y,r);
-    ctx.arcTo(x,y,x+w,y,r);
-    ctx.closePath();
-  }
-
-  function drawCharacter(o, colors, flash){
-    ctx.save();
-    ctx.translate(o.x, o.y);
-    if (flash && Math.floor(t*20)%2===0){ ctx.globalAlpha = 0.4; }
-
-    // strings + balloons
-    for (let i=0;i<o.balloons;i++){
-      const bx = o.balloons===1 ? 0 : (i===0?-5:5);
-      const by = -16;
-      ctx.strokeStyle = 'rgba(255,255,255,.6)';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(bx,by+6); ctx.lineTo(bx*0.4,-6); ctx.stroke();
-      ctx.fillStyle = i===0?colors.b1:colors.b2;
-      ctx.beginPath(); ctx.ellipse(bx,by,5,6,0,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.35)';
-      ctx.beginPath(); ctx.ellipse(bx-1.5,by-2,1.4,1.8,0,0,Math.PI*2); ctx.fill();
-    }
-
-    // wings
-    const flap = Math.sin((o.wing>0?18:6) * t + (o===player?0:1.7)) * (o.wing>0?9:3);
-    ctx.fillStyle = colors.wing;
-    ctx.beginPath();
-    ctx.moveTo(-4*o.facing, -2);
-    ctx.lineTo(-11*o.facing, -6-flap*0.3);
-    ctx.lineTo(-9*o.facing, 2);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(4*o.facing, -2);
-    ctx.lineTo(11*o.facing, -6-flap*0.3);
-    ctx.lineTo(9*o.facing, 2);
-    ctx.closePath(); ctx.fill();
-
-    // body
-    ctx.fillStyle = colors.body;
-    roundRect(-4,-3,8,9,3);
-    ctx.fill();
-    // head
-    ctx.fillStyle = colors.skin;
-    ctx.beginPath(); ctx.arc(0,-6,4.2,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = colors.helmet;
-    ctx.beginPath(); ctx.arc(0,-7.5,4.4,Math.PI, 0); ctx.fill();
-    ctx.fillStyle = '#1a1220';
-    ctx.beginPath(); ctx.arc(1.5*o.facing,-6,0.9,0,Math.PI*2); ctx.fill();
-    // legs
-    ctx.strokeStyle = colors.body;
-    ctx.lineWidth = 2.4;
-    const legSwing = Math.sin(t*10)*2*(Math.abs(o.vx)>10?1:0.3);
-    ctx.beginPath(); ctx.moveTo(-2,6); ctx.lineTo(-2+legSwing,10); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(2,6); ctx.lineTo(2-legSwing,10); ctx.stroke();
-
-    ctx.restore();
-  }
-
   const PLAYER_COLORS = { b1:'#ff4757', b2:'#3aa8ff', body:'#e2e2e2', skin:'#f2c8a0', helmet:'#ff4757', wing:'#ffcc33' };
   const ENEMY_COLORS  = { b1:'#ffd23f', b2:'#ffb347', body:'#6b4a86', skin:'#f2c8a0', helmet:'#3a2451', wing:'#c98a3a' };
 
-  function drawLightningFx(){
-    if (lightningFx<=0) return;
-    ctx.save();
-    ctx.strokeStyle = `rgba(255,255,255,${Math.min(1,lightningFx*2)})`;
-    ctx.lineWidth = 2;
-    const perch = platforms.find(p=>p.type==='lightning');
-    const ox = perch.x+perch.w/2, oy = perch.y;
-    for (const en of enemies){
-      if (!en.alive || en.spawnDelay>0) continue;
-      ctx.beginPath();
-      ctx.moveTo(ox,oy);
-      let cx=ox, cy=oy;
-      const steps=5;
-      for (let i=1;i<=steps;i++){
-        const px = ox + (en.x-ox)*(i/steps) + (Math.random()-0.5)*14;
-        const py = oy + (en.y-oy)*(i/steps) + (Math.random()-0.5)*14;
-        ctx.lineTo(px,py);
-      }
-      ctx.stroke();
+  // ---------- 3D scene (three.js, 2.5D) ----------
+  // Game coordinates map 1:1 onto the z=0 plane: world x = x - W/2, world y = WATER_Y - y (the sea is y=0).
+  let t = 0;
+  const wx = x => x - W / 2, wy = y => WATER_Y - y;
+  const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
+  const TAU = Math.PI * 2;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  const DPR_MAX = Math.min(devicePixelRatio || 1, IS_TOUCH ? 1.5 : 1.25), DPR_MIN = Math.min(DPR_MAX, 0.7);
+  let DPR = DPR_MAX;
+  renderer.setPixelRatio(DPR);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = .92;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;      // updated once per frame, not again for the water reflection pass
+
+  const scene = new THREE.Scene();
+  const FOG = new THREE.Color(0x24406a);
+  scene.fog = new THREE.Fog(FOG, 500, 2300);
+  const camera = new THREE.PerspectiveCamera(33.5, W / H, 2, 4000);
+  const CY = WATER_Y - H / 2, CAM_D = 382, CAM_UP = 30;
+  const camBase = new THREE.Vector3(0, CY + CAM_UP, CAM_D), camLook = new THREE.Vector3(0, CY - 2, 0);
+  camera.position.copy(camBase); camera.lookAt(camLook);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.45;
+
+  // post: bloom, then one pass for vignette, chromatic aberration, grain and the lightning flash
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: IS_TOUCH ? 0 : 2 }));
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.5, 0.9);
+  composer.addPass(bloom);
+  const fxPass = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, uT: { value: 0 }, uFlash: { value: 0 }, uAb: { value: 0.0012 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float uT, uFlash, uAb; varying vec2 vUv;
+      float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+      void main(){
+        vec2 d = vUv - .5; float r = length(d);
+        float ab = uAb + uFlash * .006;
+        vec3 c = vec3(texture2D(tDiffuse, vUv + d * ab).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - d * ab).b);
+        c *= 1. - smoothstep(.45, .95, r) * .55;
+        c += (h(vUv * 811. + fract(uT) * 97.) - .5) * .035;
+        c = mix(c, c * vec3(1.25,1.15,.8) + vec3(.35,.28,.05), uFlash * .7);
+        gl_FragColor = vec4(c, 1.);
+      }`,
+  });
+  composer.addPass(fxPass);
+  composer.addPass(new OutputPass());
+
+  // ---------- textures ----------
+  function canvasTex(w, h, draw) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+    const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx;
+  }
+  const TEX = {
+    soft: canvasTex(64, 64, (g) => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.4, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }),
+    cloud: canvasTex(128, 128, (g) => {
+      for (let i = 0; i < 14; i++) { const x = 30 + Math.random() * 68, y = 40 + Math.random() * 48, r = 18 + Math.random() * 26; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); }
+    }),
+    moon: canvasTex(256, 256, (g) => {
+      const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, 'rgba(255,248,225,1)'); gr.addColorStop(.18, 'rgba(255,244,214,1)'); gr.addColorStop(.2, 'rgba(255,230,190,.55)'); gr.addColorStop(.45, 'rgba(180,200,255,.16)'); gr.addColorStop(1, 'rgba(120,150,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+      g.fillStyle = 'rgba(200,190,170,.35)'; for (const [x, y, r] of [[115, 118, 9], [140, 135, 6], [124, 145, 5], [138, 112, 4]]) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); }
+    }),
+  };
+
+  // ---------- sky ----------
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(2500, 32, 16), new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false, uniforms: { uT: { value: 0 } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+    fragmentShader: `uniform float uT; varying vec3 vDir;
+      float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
+      void main(){
+        float h = vDir.y;
+        vec3 hor = vec3(.5,.3,.46), mid = vec3(.07,.15,.34), top = vec3(.012,.02,.075);
+        vec3 c = mix(hor, mid, smoothstep(-.02, .2, h)); c = mix(c, top, smoothstep(.2, .7, h));
+        c += vec3(.95,.5,.3) * .25 * smoothstep(.12, 0., abs(h - .015));          // warm band on the horizon
+        c += vec3(.1,.55,.45) * .07 * smoothstep(.1,.3,h) * smoothstep(.55,.3,h) * (.5 + .5 * sin(vDir.x * 7. + uT * .25));   // faint aurora
+        vec3 d = vDir * 420.; vec3 cell = floor(d); float r = hash(cell);
+        if (r > .982) { vec3 f = fract(d) - .5; float s = smoothstep(.16, .0, length(f)); c += s * (.55 + .45 * sin(uT * 2.5 + r * 60.)) * smoothstep(.08, .35, h) * 1.4; }
+        gl_FragColor = vec4(c, 1.);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  }));
+  scene.add(sky);
+  const moonSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.moon, fog: false, depthWrite: false, color: new THREE.Color(1.6, 1.6, 1.6) }));
+  moonSprite.position.set(330, 420, -1300); moonSprite.scale.setScalar(300); scene.add(moonSprite);
+  const MOON_DIR = moonSprite.position.clone().sub(new THREE.Vector3(0, 0, 0)).normalize();
+
+  // far ridges, near islands and a lighthouse with a sweeping beam
+  function ridge(z, color, amp, base, seed, span = 2600) {
+    const s = new THREE.Shape(); let r = seed;
+    const rnd = () => (r = (r * 9301 + 49297) % 233280) / 233280;
+    s.moveTo(-span / 2, -80);
+    for (let x = -span / 2; x <= span / 2; x += 60) s.lineTo(x, base + amp * (0.5 + 0.5 * Math.sin(x * 0.004 + seed)) * (0.55 + rnd() * 0.45));
+    s.lineTo(span / 2, -80); s.closePath();
+    const m = new THREE.Mesh(new THREE.ShapeGeometry(s), new THREE.MeshBasicMaterial({ color }));
+    m.position.z = z; scene.add(m); return m;
+  }
+  ridge(-1150, 0x2c4a78, 210, 40, 3);
+  ridge(-820, 0x1d3559, 150, 10, 7);
+  ridge(-520, 0x152843, 70, -10, 11, 1800);
+  const lighthouse = new THREE.Group();
+  {
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(5, 8, 70, 10), new THREE.MeshStandardMaterial({ color: 0xe8e4dc, roughness: .6 }));
+    tower.position.y = 35; lighthouse.add(tower);
+    for (let i = 0; i < 3; i++) { const band = new THREE.Mesh(new THREE.CylinderGeometry(6.3 - i * .8, 6.9 - i * .8, 7, 10), new THREE.MeshStandardMaterial({ color: 0xc23a3a, roughness: .6 })); band.position.y = 12 + i * 20; lighthouse.add(band); }
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(4.5, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.6, 1.6) })); lamp.position.y = 74; lighthouse.add(lamp);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.soft, color: 0xffe6a8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); glow.position.y = 74; glow.scale.setScalar(60); lighthouse.add(glow);
+    const beamGeo = new THREE.ConeGeometry(26, 520, 16, 1, true).translate(0, -260, 0).rotateZ(Math.PI / 2);
+    const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+      uniforms: {}, vertexShader: 'varying float vX; void main(){ vX = position.x; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+      fragmentShader: 'varying float vX; void main(){ float a = smoothstep(520., 0., vX) * .18; gl_FragColor = vec4(vec3(1.,.9,.65) * a, a); }',
+    }));
+    beam.position.y = 74; lighthouse.add(beam); lighthouse.userData.beam = beam;
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(30, 0), new THREE.MeshStandardMaterial({ color: 0x1b2638, roughness: 1, flatShading: true }));
+    rock.scale.set(1.6, .6, 1); rock.position.y = -4; lighthouse.add(rock);
+  }
+  lighthouse.position.set(-470, 0, -640); scene.add(lighthouse);
+
+  // drifting clouds: clusters of soft sprites behind the playfield
+  const clouds = [];
+  for (let i = 0; i < 9; i++) {
+    const g = new THREE.Group(); const n = 5 + (Math.random() * 4 | 0);
+    for (let k = 0; k < n; k++) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.cloud, transparent: true, depthWrite: false, opacity: .42 + Math.random() * .2, color: new THREE.Color().setHSL(.62, .35, .62 + Math.random() * .1) }));
+      s.position.set((k - n / 2) * 22 + Math.random() * 10, Math.random() * 14, Math.random() * 10); s.scale.set(70 + Math.random() * 40, 46 + Math.random() * 20, 1); g.add(s);
     }
-    ctx.fillStyle = `rgba(255,204,51,${lightningFx})`;
-    ctx.fillRect(0,0,W,H);
-    ctx.restore();
+    g.position.set(-700 + Math.random() * 1400, 150 + Math.random() * 220, -260 - Math.random() * 380);
+    g.userData.v = 4 + Math.random() * 6; scene.add(g); clouds.push(g);
   }
 
-  function render(){
-    ctx.clearRect(0,0,W,H);
-    drawBackground();
-    for (const p of platforms) drawPlatform(p);
-    drawFish();
-    for (const en of enemies){
-      if (!en.alive || en.spawnDelay>0) continue;
-      drawCharacter(en, ENEMY_COLORS, en.invuln>0);
+  // ---------- lights ----------
+  scene.add(new THREE.HemisphereLight(0x9fc2ff, 0x0d2238, .75));
+  const moonLight = new THREE.DirectionalLight(0xd6e4ff, 1.9);
+  moonLight.position.set(180, 300, 260); moonLight.target.position.set(0, 80, 0);
+  moonLight.castShadow = true; moonLight.shadow.mapSize.set(1024, 1024);
+  Object.assign(moonLight.shadow.camera, { left: -240, right: 240, top: 260, bottom: -60, near: 50, far: 900 });
+  moonLight.shadow.bias = -0.0006; moonLight.shadow.normalBias = 0.6;
+  scene.add(moonLight, moonLight.target);
+  const rim = new THREE.DirectionalLight(0xff9a7a, 0.7); rim.position.set(-300, 90, -120); scene.add(rim);
+
+  // ---------- water (planar reflection rendered at low resolution) ----------
+  const WaterShader = {
+    name: 'BalloonWater',
+    uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, uT: { value: 0 }, uCam: { value: new THREE.Vector3() }, uMoon: { value: MOON_DIR }, uFog: { value: FOG }, uRip: { value: [] } },
+    vertexShader: `uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 vW;
+      void main(){ vUv = textureMatrix * vec4(position, 1.); vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float uT; uniform vec3 uCam, uMoon, uFog; varying vec4 vUv; varying vec3 vW;
+      void main(){
+        vec2 p = vW.xz * .045; float t = uT;
+        vec2 n = vec2(sin(p.x * 1.7 + t * 1.3) + .6 * sin(p.x * .9 - p.y * 1.3 + t * .9) + .3 * sin((p.x + p.y) * 3.1 + t * 2.1),
+                      cos(p.y * 1.9 + t * 1.1) + .6 * cos(p.x * 1.2 + p.y * .7 - t * 1.4) + .3 * sin((p.x - p.y) * 2.7 - t * 1.7));
+        float dist = length(vW - uCam);
+        vec3 N = normalize(vec3(n.x * .06, 1., n.y * .06));
+        vec4 uv = vUv; uv.xy += N.xz * 7.;
+        vec3 refl = texture2DProj(tDiffuse, uv).rgb;
+        vec3 V = normalize(uCam - vW);
+        float fres = .22 + .78 * pow(1. - max(dot(N, V), 0.), 4.);
+        vec3 shallow = vec3(.04, .3, .38), deep = vec3(.01, .07, .14);
+        vec3 col = mix(shallow, deep, smoothstep(0., 700., dist));
+        col = mix(col, refl * .85, clamp(fres, 0., .72));
+        vec3 H = normalize(normalize(uMoon) + V);
+        col += vec3(1., .93, .8) * pow(max(dot(N, H), 0.), 900.) * 1.6;
+        col = mix(col, uFog, smoothstep(500., 1500., dist));
+        gl_FragColor = vec4(col, 1.);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  };
+  const water = new Reflector(new THREE.PlaneGeometry(3200, 2000), { shader: WaterShader, textureWidth: 256, textureHeight: 144, clipBias: 0.003, color: 0x7f7f7f });
+  water.rotation.x = -Math.PI / 2; water.position.set(0, 0, -600); scene.add(water);
+
+  // ripples on the water when something splashes
+  const ripples = [];
+  const rippleGeo = new THREE.RingGeometry(0.82, 1, 40).rotateX(-Math.PI / 2);
+  function ripple(x, big) {
+    for (let k = 0; k < (big ? 3 : 2); k++) {
+      const m = new THREE.Mesh(rippleGeo, new THREE.MeshBasicMaterial({ color: 0xcfefff, transparent: true, opacity: .6, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+      m.position.set(wx(x), .4, 0); scene.add(m);
+      ripples.push({ m, t: -k * .18, max: (big ? 30 : 18) * (1 + k * .4) });
     }
-    if (player.alive) drawCharacter(player, PLAYER_COLORS, player.invuln>0);
-    drawParticles();
-    drawLightningFx();
+  }
+
+  // ---------- platforms ----------
+  const MAT = {
+    rock: new THREE.MeshStandardMaterial({ color: 0x6b5644, roughness: .95, flatShading: true }),
+    rockDark: new THREE.MeshStandardMaterial({ color: 0x3d3140, roughness: .95, flatShading: true }),
+    grass: new THREE.MeshStandardMaterial({ color: 0x4fa83f, roughness: .8 }),
+    grassDark: new THREE.MeshStandardMaterial({ color: 0x2f7a33, roughness: .85, flatShading: true }),
+    trunk: new THREE.MeshStandardMaterial({ color: 0x7a5233, roughness: .9, flatShading: true }),
+    gold: new THREE.MeshStandardMaterial({ color: 0xffc23a, roughness: .25, metalness: .85, emissive: 0x4a2c00, emissiveIntensity: .5 }),
+    crystal: new THREE.MeshStandardMaterial({ color: 0x7ef0ff, emissive: 0x2fd8ff, emissiveIntensity: 1.6, roughness: .2 }),
+  };
+  function slab(x0, x1, yTop, thick, depth, mat, bevel = 2.5) {
+    const sh = new THREE.Shape(); sh.moveTo(x0, yTop - thick); sh.lineTo(x1, yTop - thick); sh.lineTo(x1, yTop); sh.lineTo(x0, yTop); sh.closePath();
+    const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, steps: 1 });
+    g.translate(0, -bevel, -depth / 2);
+    const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true; scene.add(m); return m;
+  }
+  function palm(x, y, z, s, lean) {
+    const g = new THREE.Group(); g.position.set(x, y, z); g.scale.setScalar(s); g.rotation.z = lean;
+    let px = 0, py = 0;
+    for (let i = 0; i < 6; i++) { const seg = new THREE.Mesh(new THREE.CylinderGeometry(1.5 - i * .12, 1.7 - i * .12, 7, 6), MAT.trunk); seg.position.set(px, py + 3.5, 0); seg.rotation.z = -i * .06; seg.castShadow = true; g.add(seg); px += Math.sin(i * .06) * 3; py += 6.6; }
+    for (let i = 0; i < 7; i++) {
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(3, 20, 4, 1, true), MAT.grassDark); leaf.scale.set(1, 1, .25);
+      leaf.position.set(px, py + 1, 0); leaf.rotation.set(0, i * TAU / 7, 0); leaf.rotateZ(1.9); leaf.translateY(9); leaf.castShadow = true; g.add(leaf);
+    }
+    scene.add(g); return g;
+  }
+  const crystalGeo = new THREE.OctahedronGeometry(2.6, 0);
+  let perchGlow = null, perchLight = null, perchOrb = null, perchRing = null;
+  for (const p of platforms) {
+    const x0 = wx(p.x), x1 = wx(p.x + p.w), top = wy(p.y);
+    if (p.type === 'shore') {
+      const outer = p.x === 0 ? x0 - 90 : x0, outerR = p.x === 0 ? x1 : x1 + 90;
+      slab(outer, outerR, top - 3, 46, 70, MAT.rock, 3);
+      slab(outer, outerR, top, 3.5, 66, MAT.grass, 1.5);
+      const edge = p.x === 0 ? x0 + 14 : x1 - 14, side = p.x === 0 ? -1 : 1;
+      palm(edge + side * 2, top, -24, 1.15, side * .18);
+      for (let k = 0; k < 4; k++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(4 + Math.random() * 3, 0), MAT.grassDark); b.position.set(edge + side * (8 + k * 9) - side * 26, top + 2, -26 + Math.random() * 6); b.castShadow = true; scene.add(b); }
+    } else if (p.type === 'cloud') {
+      const cx = (x0 + x1) / 2, w = x1 - x0;
+      slab(x0, x1, top, 4, 26, MAT.grass, 2);
+      const under = new THREE.Mesh(new THREE.ConeGeometry(w * .52, 30, 7, 2), MAT.rock); under.rotation.x = Math.PI; under.scale.set(1, 1, .5);
+      under.position.set(cx, top - 19, 0); under.castShadow = under.receiveShadow = true; scene.add(under);
+      for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(new THREE.DodecahedronGeometry(5 + Math.random() * 3, 0), MAT.rockDark); b.position.set(cx + (k - 1) * w * .28, top - 9 - Math.random() * 4, 6); b.castShadow = true; scene.add(b); }
+      for (let k = 0; k < 4; k++) { const c = new THREE.Mesh(crystalGeo, MAT.crystal); c.position.set(cx + (Math.random() - .5) * w * .5, top - 20 - Math.random() * 10, 4 + Math.random() * 4); c.scale.y = 1.8; c.rotation.z = (Math.random() - .5) * .8; scene.add(c); }
+      for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(3 + Math.random() * 2, 0), MAT.grassDark); b.position.set(x0 + 6 + Math.random() * (w - 12), top + 1.5, -9 + Math.random() * 3); scene.add(b); }
+    } else {
+      const cx = (x0 + x1) / 2, w = x1 - x0;
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(w / 2 + 2, w / 2 - 2, 5, 28), MAT.gold); disc.scale.z = .55; disc.position.set(cx, top - 2.5, 0); disc.castShadow = disc.receiveShadow = true; scene.add(disc);
+      perchRing = new THREE.Mesh(new THREE.TorusGeometry(w / 2 + 2.5, .9, 8, 40), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.8, .5) }));
+      perchRing.rotation.x = Math.PI / 2; perchRing.scale.y = .55; perchRing.position.set(cx, top - .5, 0); scene.add(perchRing);
+      perchOrb = new THREE.Mesh(new THREE.IcosahedronGeometry(4, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.2, 1) })); perchOrb.position.set(cx, top - 16, 0); scene.add(perchOrb);
+      perchGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.soft, color: 0xffcc44, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); perchGlow.position.copy(perchOrb.position); perchGlow.scale.setScalar(50); scene.add(perchGlow);
+      perchLight = new THREE.PointLight(0xffc844, 600, 160, 1.6); perchLight.position.copy(perchOrb.position); scene.add(perchLight);
+    }
+  }
+  const PERCH = platforms.find(p => p.type === 'lightning');
+
+  // ---------- characters ----------
+  const balloonGeo = (() => {
+    const P = [[0, 0], [.6, .3], [1.7, 1.1], [2.9, 2.4], [3.8, 4], [4.4, 5.9], [4.5, 7.6], [4.1, 9.2], [3.1, 10.6], [1.6, 11.5], [0, 11.8]];
+    const pts = new THREE.SplineCurve(P.map(p => new THREE.Vector2(p[0], p[1]))).getPoints(22); pts[0].x = 0; pts[pts.length - 1].x = 0;
+    return new THREE.LatheGeometry(pts, 20);
+  })();
+  const knotGeo = new THREE.ConeGeometry(.5, .9, 8).translate(0, -.3, 0);
+  const stringGeo = new THREE.CylinderGeometry(.16, .16, 1, 4);
+  const stringMat = new THREE.MeshBasicMaterial({ color: 0xf2f2f2 });
+  const UP = new THREE.Vector3(0, 1, 0), _a = new THREE.Vector3(), _b = new THREE.Vector3();
+  function setStick(m, a, b) { _a.subVectors(b, a); const len = _a.length(); m.position.copy(a).addScaledVector(_a, .5); m.scale.set(1, len, 1); m.quaternion.setFromUnitVectors(UP, _a.normalize()); }
+  const matCache = {};
+  function mat(hex, opts) { const k = hex + JSON.stringify(opts || {}); return matCache[k] || (matCache[k] = new THREE.MeshStandardMaterial({ color: hex, roughness: .55, ...opts })); }
+  function makeModel(colors) {
+    const root = new THREE.Group(), g = new THREE.Group(); root.add(g);
+    const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+    add(new THREE.CapsuleGeometry(3.3, 3.6, 4, 10), mat(colors.body), 0, -1.6, 0);
+    add(new THREE.SphereGeometry(4.1, 16, 12), mat(colors.skin, { roughness: .7 }), 0, 5.6, 0);
+    add(new THREE.SphereGeometry(4.45, 16, 10, 0, TAU, 0, Math.PI / 2), mat(colors.helmet, { roughness: .3, metalness: .2 }), 0, 6.1, 0);
+    add(new THREE.BoxGeometry(5.6, 1, 1.4), mat(colors.helmet, { roughness: .3 }), 0, 5.9, 3.5);
+    for (const s of [-1, 1]) add(new THREE.SphereGeometry(.75, 8, 6), mat(0x1a1220), s * 1.5, 5.4, 3.7);
+    const arms = [-1, 1].map(s => { const a = add(new THREE.CylinderGeometry(.75, .75, 1, 6), mat(colors.body), 0, 0, 0); a.userData.s = s; return a; });
+    const legs = [-1, 1].map(s => { const pv = new THREE.Group(); pv.position.set(s * 1.6, -5.4, 0); g.add(pv); const l = new THREE.Mesh(new THREE.CylinderGeometry(1, .9, 5, 6).translate(0, -2.5, 0), mat(colors.body)); l.castShadow = true; pv.add(l); const f = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 3), mat(colors.helmet)); f.position.set(0, -5.2, .6); pv.add(f); return pv; });
+    const wingShape = new THREE.Shape(); wingShape.moveTo(0, 0); wingShape.quadraticCurveTo(5, 4, 11, 3.5); wingShape.lineTo(9, 1); wingShape.lineTo(10.5, -.5); wingShape.lineTo(7.5, -1.5); wingShape.quadraticCurveTo(3, -2.5, 0, -1.5);
+    const wingGeo = new THREE.ShapeGeometry(wingShape);
+    const wingMat = mat(colors.wing, { side: THREE.DoubleSide, roughness: .5, emissive: colors.wing, emissiveIntensity: .12 });
+    const wings = [-1, 1].map(s => { const pv = new THREE.Group(); pv.position.set(s * 2, 1.2, -2.6); g.add(pv); const w = new THREE.Mesh(wingGeo, wingMat); w.scale.x = s; w.castShadow = true; pv.add(w); return pv; });
+    const balloons = [0, 1].map(i => {
+      const bg = new THREE.Group(); g.add(bg);
+      const m = new THREE.MeshStandardMaterial({ color: i ? colors.b2 : colors.b1, roughness: .16, metalness: 0, envMapIntensity: 1.5, emissive: i ? colors.b2 : colors.b1, emissiveIntensity: .12 });
+      const body = new THREE.Mesh(balloonGeo, m); body.castShadow = true; bg.add(body); bg.add(new THREE.Mesh(knotGeo, m));
+      const str = new THREE.Mesh(stringGeo, stringMat); g.add(str);
+      return { g: bg, str };
+    });
+    root.userData = { g, arms, legs, wings, balloons, spin: 0 };
+    scene.add(root);
+    return root;
+  }
+  const playerModel = makeModel(PLAYER_COLORS);
+  const enemyModels = Array.from({ length: 7 }, () => makeModel(ENEMY_COLORS));
+  const fallers = [];             // popped rivals tumbling into the sea
+  const fallerModels = Array.from({ length: 4 }, () => makeModel(ENEMY_COLORS));
+  for (const m of fallerModels) m.visible = false;
+  const HAND = [new THREE.Vector3(-3, 6.4, 1.8), new THREE.Vector3(3, 6.4, 1.8)];
+  const _k = new THREE.Vector3();
+  function poseModel(model, o, phase, dt) {
+    const u = model.userData, g = u.g;
+    const face = o.facing >= 0 ? 1 : -1;
+    const tgt = face * 1.05;
+    g.rotation.y += (tgt - g.rotation.y) * Math.min(1, dt * 10);
+    g.rotation.z = THREE.MathUtils.clamp(-o.vx * .0028, -.3, .3);
+    const flapping = o.wing > 0, a = Math.sin((flapping ? 22 : 6) * t + phase) * (flapping ? .95 : .28);
+    u.wings[0].rotation.set(0, -.5, .25 + a); u.wings[1].rotation.set(0, .5, -.25 - a);
+    const sw = Math.sin(t * 10 + phase) * (Math.abs(o.vx) > 10 ? .7 : .15);
+    u.legs[0].rotation.x = sw; u.legs[1].rotation.x = -sw;
+    const n = Math.max(0, Math.min(2, o.balloons | 0));
+    const lift = THREE.MathUtils.clamp(-(o.vy || 0) * .012, -2.2, 2.2);
+    u.balloons.forEach((b, i) => {
+      const on = i < n;
+      b.g.visible = b.str.visible = on;
+      if (!on) return;
+      const bx = n === 1 ? 0 : (i ? 4.6 : -4.6), bz = n === 1 ? 0 : (i ? -1.6 : 1.6);
+      b.g.position.set(bx + Math.sin(t * 1.7 + i * 2 + phase) * .5, 12.2 - lift + (i ? .7 : 0), bz);
+      b.g.rotation.z = Math.sin(t * 2 + i + phase) * .08 + (o.vx || 0) * .002;
+      _k.set(b.g.position.x, b.g.position.y - .4, b.g.position.z);
+      setStick(b.str, HAND[n === 1 ? 1 : i], _k);
+    });
+    // arms reach up towards the strings
+    u.arms.forEach((arm, i) => setStick(arm, _b.set(i ? 3 : -3, 2.2, .4), HAND[i]));
+  }
+
+  // ---------- fish ----------
+  const fishModel = new THREE.Group();
+  {
+    const fm = new THREE.MeshStandardMaterial({ color: 0x5fd0e8, roughness: .3, metalness: .35, emissive: 0x0e4a58, emissiveIntensity: .4 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), fm); body.scale.set(10, 6, 4.5); body.castShadow = true; fishModel.add(body);
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(4.6, 7, 4), fm); tail.rotation.z = Math.PI / 2; tail.scale.z = .3; tail.position.x = -11; fishModel.add(tail);
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(2.4, 5, 4), fm); fin.position.set(0, 6, 0); fin.scale.z = .3; fishModel.add(fin);
+    for (const s of [-1, 1]) { const eye = new THREE.Mesh(new THREE.SphereGeometry(1.1, 8, 6), new THREE.MeshBasicMaterial({ color: 0x0e1a24 })); eye.position.set(6, 1.4, s * 3.4); fishModel.add(eye); }
+    const jaw = new THREE.Mesh(new THREE.ConeGeometry(2.6, 4, 6), new THREE.MeshStandardMaterial({ color: 0xf0f6f8, roughness: .5 })); jaw.rotation.z = -Math.PI / 2; jaw.position.set(10.5, -1.2, 0); fishModel.add(jaw);
+  }
+  fishModel.visible = false; scene.add(fishModel);
+  let fishSplashed = false;
+
+  // ---------- particles (the game's burst() list, drawn as soft glowing points) ----------
+  const PMAX = 700;
+  const pGeo = new THREE.BufferGeometry();
+  pGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(PMAX * 3), 3));
+  pGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(PMAX * 3), 3));
+  pGeo.setAttribute('size', new THREE.BufferAttribute(new Float32Array(PMAX), 1));
+  pGeo.setAttribute('alpha', new THREE.BufferAttribute(new Float32Array(PMAX), 1));
+  const pMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uScale: { value: 300 } },
+    vertexShader: `attribute float size; attribute float alpha; attribute vec3 color; varying vec3 vC; varying float vA; uniform float uScale;
+      void main(){ vC = color; vA = alpha; vec4 mv = modelViewMatrix * vec4(position, 1.); gl_PointSize = size * uScale / -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `varying vec3 vC; varying float vA; void main(){ float d = length(gl_PointCoord - .5); float a = smoothstep(.5, .05, d) * vA; gl_FragColor = vec4(vC * a, a); }`,
+  });
+  const pts = new THREE.Points(pGeo, pMat); pts.frustumCulled = false; scene.add(pts);
+  const colorCache = {};
+  function particleColor(css) {
+    if (colorCache[css]) return colorCache[css];
+    const m = /rgba?\(([^)]+)\)/.exec(css);
+    const c = m ? new THREE.Color().setRGB(...m[1].split(',').slice(0, 3).map(v => +v / 255), THREE.SRGBColorSpace) : new THREE.Color(css);
+    return (colorCache[css] = c.multiplyScalar(1.6));
+  }
+
+  // ---------- lightning bolts: jittered ribbons rebuilt every frame while the zap lasts ----------
+  const BOLT_MAX = 8 * 7 * 2;
+  const boltGeo = new THREE.BufferGeometry();
+  boltGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BOLT_MAX * 3 * 3), 3));
+  const bolts = new THREE.Mesh(boltGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.8, 1.8), transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false }));
+  bolts.frustumCulled = false; scene.add(bolts);
+  function buildBolts() {
+    const arr = boltGeo.attributes.position.array; let n = 0;
+    const ox = wx(PERCH.x + PERCH.w / 2), oy = wy(PERCH.y) - 16;
+    const quad = (x0, y0, x1, y1, w) => {
+      const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy) || 1, nx = -dy / l * w, ny = dx / l * w;
+      const v = [x0 - nx, y0 - ny, x0 + nx, y0 + ny, x1 + nx, y1 + ny, x0 - nx, y0 - ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny];
+      for (let i = 0; i < 6; i++) { arr[n * 3] = v[i * 2]; arr[n * 3 + 1] = v[i * 2 + 1]; arr[n * 3 + 2] = 2; n++; }
+    };
+    for (const en of enemies) {
+      if (!en.alive || en.spawnDelay > 0) continue;
+      let px = ox, py = oy;
+      const ex = wx(en.x), ey = wy(en.y);
+      for (let i = 1; i <= 6; i++) {
+        const k = i / 6, jit = i < 6 ? 16 : 0;
+        const nx = ox + (ex - ox) * k + (Math.random() - .5) * jit, ny = oy + (ey - oy) * k + (Math.random() - .5) * jit;
+        if (n + 6 <= BOLT_MAX * 3) quad(px, py, nx, ny, 1.1 * (1.2 - k * .5));
+        px = nx; py = ny;
+      }
+    }
+    boltGeo.setDrawRange(0, n); boltGeo.attributes.position.needsUpdate = true;
+  }
+
+  // ---------- sizing & adaptive resolution ----------
+  function resize() {
+    const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight);
+    renderer.setPixelRatio(DPR); renderer.setSize(w, h, false);
+    composer.setPixelRatio(DPR); composer.setSize(w, h);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    water.getRenderTarget().setSize(Math.max(64, Math.round(w * DPR * .34)), Math.max(36, Math.round(h * DPR * .34)));
+    pMat.uniforms.uScale.value = h * DPR / (2 * Math.tan(camera.fov * Math.PI / 360));
+  }
+  new ResizeObserver(resize).observe(canvas);
+  const adMs = new Float32Array(72); let adN = 0, adGood = 0;
+  function adaptRes(ms) {
+    if (state !== 'PLAYING') return;
+    adMs[adN++] = Math.min(ms, 200); if (adN < adMs.length) return;
+    adN = 0; const med = adMs.slice().sort()[adMs.length >> 1];
+    if (med > 21 && DPR > DPR_MIN) { const was = DPR; DPR = Math.max(DPR_MIN, DPR * .85); adGood = 0; resize(); DBG.log('resolution down', was.toFixed(2), '->', DPR.toFixed(2)); }
+    else if (med < 17.5 && DPR < DPR_MAX) { if (++adGood >= 6) { DPR = Math.min(DPR_MAX, DPR * 1.1); adGood = 0; resize(); } }
+    else adGood = 0;
+  }
+
+  // ---------- per-frame ----------
+  let lastFrameDt = 1 / 60;
+  function render() {
+    const dt = lastFrameDt;
+    // camera: a gentle drift with the player, a shake while the sky is zapped
+    const sway = REDUCED_MOTION ? 0 : 1;
+    const followX = player.alive ? wx(player.x) * .03 : 0;
+    camera.position.set(camBase.x + followX * sway + Math.sin(t * .23) * 3 * sway, camBase.y + Math.sin(t * .31) * 2 * sway, camBase.z);
+    if (lightningFx > 0 && !REDUCED_MOTION) camera.position.add(_a.set((Math.random() - .5) * 4, (Math.random() - .5) * 4, 0).multiplyScalar(lightningFx * 2));
+    camera.lookAt(camLook.x + followX * sway, camLook.y, camLook.z);
+
+    sky.material.uniforms.uT.value = t;
+    water.material.uniforms.uT.value = REDUCED_MOTION ? 0 : t;
+    water.material.uniforms.uCam.value.copy(camera.position);
+    lighthouse.userData.beam.rotation.y = REDUCED_MOTION ? .5 : t * .6;
+    for (const c of clouds) { c.position.x += c.userData.v * dt * sway; if (c.position.x > 760) c.position.x = -760; }
+
+    // the gold perch pulses while the zap is ready
+    const ready = player.lightningReady;
+    const pulse = (REDUCED_MOTION ? .8 : .6 + .4 * Math.sin(t * 4)) * (ready ? 1 : .25);
+    perchGlow.material.opacity = .35 + .55 * pulse + lightningFx; perchGlow.scale.setScalar(44 + 16 * pulse + lightningFx * 120);
+    perchLight.intensity = 260 + 520 * pulse + lightningFx * 6000;
+    perchOrb.rotation.y += dt * 1.5; perchOrb.rotation.x += dt * .7;
+    perchRing.material.color.setRGB(2.4 * (.4 + .6 * pulse), 1.8 * (.4 + .6 * pulse), .5);
+
+    // characters
+    const showPlayer = player.alive && !(player.invuln > 0 && Math.floor(t * 20) % 2 === 0);
+    playerModel.visible = showPlayer;
+    if (showPlayer) {
+      const bob = state === 'TITLE' ? Math.sin(t * 2) * 3 : 0;
+      playerModel.position.set(wx(player.x), wy(player.y) + bob, 0);
+      poseModel(playerModel, state === 'TITLE' ? { ...player, wing: (t % 1.2) < .2 ? 1 : 0 } : player, 0, dt);
+    }
+    let k = 0;
+    for (const en of enemies) {
+      if (k >= enemyModels.length) break;
+      const m = enemyModels[k];
+      if (!en.alive || en.spawnDelay > 0) continue;
+      k++;
+      m.visible = !(en.invuln > 0 && Math.floor(t * 20) % 2 === 0);
+      en._age = (en._age || 0) + dt;
+      m.scale.setScalar(Math.min(1, .2 + en._age * 3));
+      m.position.set(wx(en.x), wy(en.y), 0);
+      poseModel(m, en, 1.7 + k, dt);
+    }
+    for (; k < enemyModels.length; k++) enemyModels[k].visible = false;
+    for (let i = fallers.length - 1; i >= 0; i--) {
+      const f = fallers[i], m = f.m;
+      f.vy += GRAVITY * 1.3 * dt; f.y += f.vy * dt; f.x += f.vx * dt; f.spin += dt * 9;
+      m.position.set(wx(f.x), wy(f.y), 0); m.userData.g.rotation.z = f.spin; m.userData.g.rotation.y = f.spin * .4;
+      poseModel(m, { facing: 1, vx: f.vx, vy: f.vy, balloons: 0, wing: 1 }, i, 0);
+      m.userData.g.rotation.z = f.spin;
+      if (f.y > WATER_Y + 4) { ripple(f.x, true); burst(f.x, WATER_Y - 2, 'rgba(200,240,255,.8)', 10, 50); m.visible = false; fallers.splice(i, 1); }
+    }
+
+    // fish
+    if (fish) {
+      fishModel.visible = true;
+      const prog = fish.t / fish.dur, vy = Math.cos(prog * Math.PI);
+      fishModel.position.set(wx(fish.x), wy(fish.y), 0);
+      fishModel.rotation.set(0, -.55, Math.atan2(vy * 2.2, 1));
+      if (!fishSplashed && fish.t > .05) { fishSplashed = true; ripple(fish.x, true); burst(fish.x, WATER_Y - 2, 'rgba(200,240,255,.8)', 12, 60); }
+    } else {
+      if (fishModel.visible) { ripple(fishModel.position.x + W / 2, true); burst(fishModel.position.x + W / 2, WATER_Y - 2, 'rgba(200,240,255,.8)', 10, 50); }
+      fishModel.visible = false; fishSplashed = false;
+    }
+
+    // particles from the game's burst() list
+    const P = pGeo.attributes; let n = 0;
+    for (const p of particles) {
+      if (n >= PMAX) break;
+      const c = particleColor(p.color), a = Math.max(0, p.life / p.maxLife);
+      P.position.array[n * 3] = wx(p.x); P.position.array[n * 3 + 1] = wy(p.y); P.position.array[n * 3 + 2] = ((n * 37) % 13) - 6;
+      P.color.array[n * 3] = c.r; P.color.array[n * 3 + 1] = c.g; P.color.array[n * 3 + 2] = c.b;
+      P.size.array[n] = p.r * 1.6 + 1.2; P.alpha.array[n] = a; n++;
+    }
+    pGeo.setDrawRange(0, n);
+    for (const key of ['position', 'color', 'size', 'alpha']) P[key].needsUpdate = true;
+
+    // ripples
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const r = ripples[i]; r.t += dt;
+      if (r.t < 0) { r.m.visible = false; continue; }
+      r.m.visible = true; const u = r.t / 1.1;
+      if (u >= 1) { scene.remove(r.m); r.m.material.dispose(); ripples.splice(i, 1); continue; }
+      r.m.scale.setScalar(2 + u * r.max); r.m.material.opacity = (1 - u) * .55;
+    }
+
+    // lightning
+    bolts.visible = lightningFx > 0;
+    if (bolts.visible) { buildBolts(); bolts.material.opacity = Math.min(1, lightningFx * 2.4); }
+    fxPass.uniforms.uFlash.value = Math.min(1, lightningFx * 1.6);
+    fxPass.uniforms.uT.value = t;
+
+    renderer.shadowMap.needsUpdate = true;
+    composer.render();
   }
 
   // ---------- main loop ----------
   let last = performance.now();
   function frame(now){
     let dt = (now-last)/1000;
+    adaptRes(now - last);
     last = now;
     dt = Math.min(dt, 0.05);
     lastDt = dt || 1/60;
+    lastFrameDt = dt;
     t += dt;
 
     if (startEdge){
@@ -2511,5 +2837,7 @@ var units = {
   updateHud();
   setState('TITLE');
   requestAnimationFrame(frame);
+  // test hook for headless checks
+  window.__bf = { get state(){ return state; }, get player(){ return player; }, get enemies(){ return enemies; }, get score(){ return score; }, get lives(){ return lives; }, startGame, triggerLightning, popEnemyBalloon, killPlayer, spawnFish: ()=>{ spawnFish(); } };
 })();
 </script>
