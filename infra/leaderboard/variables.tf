@@ -33,6 +33,7 @@ variable "games" {
     "second-strike",
     "shred-city",
     "spike-beach",
+    "sundown-highway",
     "tide-breaker",
     "tiki-toss",
     "wake-cutter",
