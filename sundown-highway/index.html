@@ -277,12 +277,15 @@ function noise2(x, y) {
 }
 
 /* ================= RENDERER ================= */
-const DPR = Math.min(devicePixelRatio || 1, isTouch ? 1.5 : 1.75);
+// render scale: capped, then trimmed at runtime when frames run long (see adaptRes)
+const DPR_MAX = Math.min(devicePixelRatio || 1, isTouch ? 1.5 : 1.25), DPR_MIN = Math.min(DPR_MAX, .7);
+let DPR = DPR_MAX;
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(DPR);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false; // updated by updateShadows: every frame by day, every other frame at dusk, off at night
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x000000, 80, 700);
 const camera = new THREE.PerspectiveCamera(62, 1, 0.3, 5000);
@@ -550,12 +553,12 @@ ocean.receiveShadow = true; ocean.visible = false; scene.add(ocean);
 /* ================= LIGHTS ================= */
 const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 2); sun.castShadow = true;
-sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
+sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 300 }); sun.shadow.bias = -.0004; sun.shadow.normalBias = .04; sun.shadow.camera.updateProjectionMatrix();
 scene.add(sun, sun.target);
 const headL = [0, 1].map(() => { const l = new THREE.SpotLight(0xfff0d8, 0, 150, .42, .55, 1.7); scene.add(l, l.target); return l; });
 const brakeLight = new THREE.PointLight(0xff2020, 0, 12, 2); scene.add(brakeLight);
-const POOLN = isTouch ? 4 : 6;
+const POOLN = isTouch ? 3 : 4;
 const pool = Array.from({ length: POOLN }, () => { const l = new THREE.SpotLight(0xffd7a0, 0, 34, 1.0, 1, 1.5); scene.add(l, l.target); return l; });
 
 /* ================= POINT SPRITES (flares, halos, particles) ================= */
@@ -1052,7 +1055,7 @@ class Stage {
     if (this.pend) {
       const p = this.pend;
       if (!p.a.built) { p.a.build(); return false; }
-      p.b.build(); this.kids = [p.a, p.b]; this.buildGap(p.a, p.b); this.pend = null; return true;
+      p.b.build(); this.kids = [p.a, p.b]; this.buildGap(p.a, p.b); this.pend = null; precompile([p.a.group, p.b.group]); return true;
     }
     const a = new Stage(this.level + 1, this.col, this, -1), b = new Stage(this.level + 1, this.col + 1, this, 1);
     a.gen(); b.gen();
@@ -1154,11 +1157,20 @@ function buildPlayerCar() {
 }
 function metal2() { return M.metal; }
 const car = buildPlayerCar();
+// compile a new stage's shaders in the background (parallel compile where supported) instead of
+// stalling the frame where it first comes into view. Targets the composer's buffer so the program
+// keys (tone mapping, colour space) match what the real render will ask for.
+function precompile(groups) {
+  if (!renderer.compileAsync) return;
+  const prev = renderer.getRenderTarget(); renderer.setRenderTarget(composer.readBuffer);
+  for (const g of groups) if (g) renderer.compileAsync(g, camera, scene).catch(() => {});
+  renderer.setRenderTarget(prev);
+}
 const pmrem = new THREE.PMREMGenerator(renderer);
 const envScene = new THREE.Scene(); envScene.add(new THREE.Mesh(sky.geometry, sky.material));
 let envRT = null, envAt = -9;
 function updateEnvMap(D) {
-  if (Math.abs(D - envAt) < .035) return; envAt = D;
+  if (Math.abs(D - envAt) < .1 && !(D >= 1 && envAt < 1)) return; envAt = D;
   sky.material.uniforms.uDisc.value = 0; const rt = pmrem.fromScene(envScene, 0, 1, 5000); sky.material.uniforms.uDisc.value = 1; if (envRT) envRT.dispose(); envRT = rt;
   paint.envMap = rt.texture; paint.needsUpdate = true; M.water.envMap = rt.texture; M.water.needsUpdate = true;
 }
@@ -1632,24 +1644,30 @@ function updateEnvironment(dt) {
   brakeLight.intensity = (input.brake && state === 'race' ? 4 : .5) * (.3 + D);
   car.tailM.color.set(0xff1a1a).multiplyScalar(input.brake && state === 'race' ? 5 : 1.2 + D * .8);
   // street-lamp spot pool goes to the nearest lamps ahead
-  assignPool();
+  assignPool(dt);
   fxPass.uniforms.uVig.value = lerp(.45, .7, D);
   bloom.strength = lerp(.32, .72, sstep(.1, .5, D)); bloom.threshold = lerp(1.5, 1.0, sstep(.1, .5, D));
   updateEnvMap(D);
 }
 const cand = [];
-function assignPool() {
+// only the nearest POOLN lamps get a real light; each lamp eases in when it gets one, so a light
+// moving from a lamp behind the car to the next one ahead never pops
+const lit = new Set();
+function assignPool(dt) {
   cand.length = 0; const st = P.stage, s0 = P.s;
-  const take = (S, off) => { if (!S.lamps) return; for (const l of S.lamps) { const ds = l.s + off - s0; if (ds > -18 && ds < 120) cand.push({ l, ds, tunnel: l.tunnel, col: S.lampCol }); } };
+  const take = (S, off) => { if (!S.lamps) return; for (const l of S.lamps) { const ds = l.s + off - s0; if (ds > -14 && ds < 120) cand.push({ l, ds, tunnel: l.tunnel, col: S.lampCol }); } };
   take(st, 0); if (st.kids && s0 > st.L - 130) for (const k of st.kids) take(k, st.L);
   cand.sort((a, b) => a.ds - b.ds);
+  const now = new Set();
   for (let i = 0; i < POOLN; i++) {
     const l = pool[i], c = cand[i];
     if (!c || (lampOn < .02 && !c.tunnel)) { l.intensity = 0; continue; }
+    now.add(c.l); c.l.glow = lit.has(c.l) ? Math.min(1, c.l.glow + dt * (c.tunnel ? 10 : 2.5)) : 0;
     l.position.copy(c.l.p); l.target.position.copy(c.l.t); l.color.copy(c.col);
-    const fade = sstep(120, 85, c.ds) * sstep(-18, -6, c.ds);
+    const fade = sstep(120, 85, c.ds) * sstep(-14, -4, c.ds) * sstep(0, 1, c.l.glow);
     l.intensity = (c.tunnel ? 90 : 105) * (c.tunnel ? 1 : lampOn) * fade;
   }
+  lit.clear(); for (const l of now) lit.add(l);
 }
 
 /* ---------- camera ---------- */
@@ -1896,17 +1914,41 @@ function render(dt) {
   fxPass.uniforms.uFlash.value = fxFlash;
   if (state !== 'title' && !$('hud').hidden) updateHUD();
   updateEngineAudio(dt, state === 'race' || state === 'countdown' || state === 'timeup' || state === 'goal');
+  updateShadows();
   composer.render();
+}
+// sun shadows: every frame while the sun is strong, every other frame at dusk, and none at night,
+// when one last pass against an empty layer clears the map
+let shadowTick = 0, shadowOff = false;
+function updateShadows() {
+  const sm = renderer.shadowMap, cam = sun.shadow.camera;
+  cam.layers.set(0);
+  if (envD > .8) { sm.needsUpdate = !shadowOff; if (!shadowOff) { cam.layers.set(31); shadowOff = true; } return; }
+  shadowOff = false; shadowTick++;
+  sm.needsUpdate = envD < .45 || (shadowTick & 1) === 0;
+}
+// adaptive resolution: if most frames run long for a second or two (a slow or throttling GPU),
+// render fewer pixels; creep back up after a long stretch of smooth frames. Uses the median frame
+// of each window so the odd stall (a stage being built) does not count.
+const adMs = new Float32Array(72); let adN = 0, adGood = 0;
+function adaptRes(ms) {
+  if (state !== 'race') return;
+  adMs[adN++] = Math.min(ms, 200); if (adN < adMs.length) return;
+  adN = 0; const med = adMs.slice().sort()[adMs.length >> 1];
+  if (med > 21 && DPR > DPR_MIN) { DPR = Math.max(DPR_MIN, DPR * .85); adGood = 0; resize(); }
+  else if (med < 17.5 && DPR < DPR_MAX) { if (++adGood >= 6) { DPR = Math.min(DPR_MAX, DPR * 1.1); adGood = 0; resize(); } }
+  else adGood = 0;
 }
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
+  adaptRes(now - last);
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   if (!state.startsWith('paused')) { if (state !== 'title' && state !== 'over') step(dt); else gameT += dt; }
   render(state.startsWith('paused') ? 0 : dt);
 }
 function resize() {
-  const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  const w = innerWidth, h = innerHeight; renderer.setPixelRatio(DPR); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
   composer.setPixelRatio(DPR); composer.setSize(w, h); bloom.resolution.set(w / 2, h / 2);
   setFov(camera.fov, true);
   const sc = h * DPR / (2 * Math.tan(camera.fov * Math.PI / 360)); for (const m of pMats) m.uniforms.uScale.value = sc;
