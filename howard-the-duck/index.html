@@ -95,6 +95,12 @@ body.touch #toasts{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
   .screen{align-items:flex-start;background:rgba(13,10,28,.9)}
   .lede{font-size:17px}
 }
+/* phones in landscape: the full-size minimap panel ran down into the Quack Fu button, so use the
+   compact HUD here too (smaller map, no parts list) */
+@media (max-height:500px){
+  #parts{display:none}
+  #map{width:120px;height:129px}
+}
 @media (prefers-reduced-motion:reduce){.toast{animation:none}#flash{transition:none}}
 </style>
 <!-- devkit: fullscreen, FPS counter, debug log. Shared across the games in this repo; keep copies identical
