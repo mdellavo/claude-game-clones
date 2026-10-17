@@ -32,6 +32,7 @@ variable "games" {
     "rotgate",
     "second-strike",
     "shred-city",
+    "slingshot-alley",
     "spike-beach",
     "sundown-highway",
     "tide-breaker",
