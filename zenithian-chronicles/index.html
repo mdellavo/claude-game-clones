@@ -1,5 +1,31 @@
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Zenithian Chronicles</title>
+<!-- devkit: fullscreen, FPS counter, debug log. Shared across the games in this repo; keep copies identical
+     apart from the config line. Keys: ` (Backquote) FPS counter · Shift+` debug log · F fullscreen (if the game
+     does not use F). The ⋯ button (all devices) opens the same three toggles. -->
+<style>
+#dk-btn{position:fixed;z-index:2147483000;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));width:30px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;font:700 16px/1 system-ui,sans-serif;cursor:pointer;opacity:.55;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#dk-btn:hover,#dk-btn:focus-visible{opacity:1}
+#dk-menu{position:fixed;z-index:2147483001;top:calc(44px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:10px;background:rgba(10,12,20,.92);border:1px solid rgba(255,255,255,.2);font:600 13px/1.2 system-ui,sans-serif}
+#dk-menu button{all:unset;cursor:pointer;color:#fff;padding:8px 12px;border-radius:6px;white-space:nowrap}
+#dk-menu button:hover,#dk-menu button:focus-visible{background:rgba(255,255,255,.12)}
+#dk-menu button[aria-pressed=true]::after{content:" ✓";color:#7cf}
+#dk-fps{position:fixed;z-index:2147483000;left:calc(6px + env(safe-area-inset-left));bottom:calc(6px + env(safe-area-inset-bottom));padding:3px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:#7f7;font:600 11px/1.25 ui-monospace,Menlo,Consolas,monospace;white-space:pre;pointer-events:none}
+#dk-log{position:fixed;z-index:2147482999;left:calc(6px + env(safe-area-inset-left));right:calc(6px + env(safe-area-inset-right));bottom:calc(34px + env(safe-area-inset-bottom));max-height:38vh;display:flex;flex-direction:column;border-radius:6px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.18);font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;color:#ddd}
+#dk-log .dk-bar{display:flex;gap:6px;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.12);align-items:center}
+#dk-log .dk-bar span{flex:1;opacity:.7}
+#dk-log .dk-bar button{all:unset;cursor:pointer;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.12);color:#fff}
+#dk-lines{overflow-y:auto;padding:4px 6px;white-space:pre-wrap;word-break:break-word;overscroll-behavior:contain}
+#dk-lines .w{color:#fd6}#dk-lines .e{color:#f77}#dk-lines .g{color:#8cf}
+</style>
+<style>
+/* devkit placement for this game: on narrow screens the top bar's gold count runs to the right edge,
+   under the ⋯ button, so keep the top bar clear of it */
+@media (max-width:660px){ #topbar{padding-right:36px;} }
+/* landscape phones: the left gutter beside the d-pad is ~150px, so keep the FPS readout narrower than that */
+@media (max-height:500px){ #dk-fps{font-size:10px;padding:2px 4px;} }
+</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=VT323&display=swap">
 <style>
@@ -345,6 +371,109 @@ input[type="text"]:focus-visible{outline:2px solid var(--gold);}
 </div>
 
 <script>
+(() => {
+  // config: game name for the log header, and whether F is free for fullscreen
+  const DK = { game: 'Zenithian Chronicles', fKey: true };
+  const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+  const el = (tag, id, html) => { const e = document.createElement(tag); if (id) e.id = id; if (html != null) e.innerHTML = html; return e; };
+  const t0 = performance.now(), lines = [], MAX = 400;
+  let logEl = null, linesEl = null, fpsEl = null, menuEl = null, btnEl = null;
+
+  // ---- log capture: console.*, uncaught errors, rejected promises, plus game events via DBG.log ----
+  const fmt = a => a.map(x => { if (x instanceof Error) return x.stack || x.message; if (typeof x === 'object' && x !== null) { try { return JSON.stringify(x); } catch { return String(x); } } return String(x); }).join(' ');
+  function push(level, args) {
+    const s = ((performance.now() - t0) / 1000).toFixed(2).padStart(7) + ' ' + fmt(args);
+    lines.push([level, s]); if (lines.length > MAX) lines.shift();
+    if (linesEl) { const d = document.createElement('div'); d.className = level; d.textContent = s; linesEl.appendChild(d); while (linesEl.childNodes.length > MAX) linesEl.firstChild.remove(); const atEnd = linesEl.scrollHeight - linesEl.scrollTop - linesEl.clientHeight < 40; if (atEnd) linesEl.scrollTop = linesEl.scrollHeight; }
+  }
+  for (const [m, lv] of [['log', ''], ['info', ''], ['debug', ''], ['warn', 'w'], ['error', 'e']]) { const o = console[m].bind(console); console[m] = (...a) => { push(lv, a); o(...a); }; }
+  addEventListener('error', e => push('e', [e.message + (e.filename ? ` (${e.filename.split('/').pop()}:${e.lineno})` : '')]));
+  addEventListener('unhandledrejection', e => push('e', ['unhandled rejection:', e.reason]));
+
+  // ---- FPS counter: its own rAF loop, so it measures what the display actually shows ----
+  let fpsOn = false, frames = 0, acc = 0, worst = 0, last = 0, raf = 0;
+  function fpsLoop(t) {
+    raf = requestAnimationFrame(fpsLoop);
+    if (last) { const d = t - last; frames++; acc += d; worst = Math.max(worst, d); }
+    last = t;
+    if (acc >= 500) { fpsEl.textContent = `${Math.round(frames * 1000 / acc)} fps  ${(acc / frames).toFixed(1)} ms  max ${worst.toFixed(0)}`; frames = 0; acc = 0; worst = 0; }
+  }
+  function setFps(on) {
+    fpsOn = on; store.set('devkit.fps', on);
+    if (on && !fpsEl) { fpsEl = el('div', 'dk-fps', '-- fps'); document.body.appendChild(fpsEl); last = 0; frames = acc = worst = 0; raf = requestAnimationFrame(fpsLoop); }
+    if (!on && fpsEl) { cancelAnimationFrame(raf); fpsEl.remove(); fpsEl = null; }
+    syncMenu();
+  }
+  function setLog(on) {
+    store.set('devkit.log', on);
+    if (on && !logEl) {
+      logEl = el('div', 'dk-log', `<div class="dk-bar"><span>${DK.game} · debug log</span><button type="button" data-a="copy">copy</button><button type="button" data-a="clear">clear</button><button type="button" data-a="close">×</button></div><div id="dk-lines"></div>`);
+      linesEl = logEl.querySelector('#dk-lines');
+      for (const [lv, s] of lines) { const d = document.createElement('div'); d.className = lv; d.textContent = s; linesEl.appendChild(d); }
+      logEl.addEventListener('click', e => { const a = e.target.dataset && e.target.dataset.a; if (a === 'clear') { lines.length = 0; linesEl.textContent = ''; } if (a === 'copy') navigator.clipboard && navigator.clipboard.writeText(lines.map(l => l[1]).join('\n')).catch(() => {}); if (a === 'close') setLog(false); });
+      // keep taps and keys on the panel from reaching the game
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown', 'wheel']) logEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(logEl); linesEl.scrollTop = linesEl.scrollHeight;
+    }
+    if (!on && logEl) { logEl.remove(); logEl = linesEl = null; }
+    syncMenu();
+  }
+
+  // ---- fullscreen ----
+  const fsEnabled = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function toggleFs() {
+    try {
+      if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      const r = document.documentElement; const p = (r.requestFullscreen || r.webkitRequestFullscreen).call(r, { navigationUI: 'hide' });
+      if (p && p.catch) p.catch(err => push('w', ['fullscreen refused:', err && err.message]));
+    } catch (err) { push('w', ['fullscreen failed:', err && err.message]); }
+  }
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { push('g', [fsElement() ? 'entered fullscreen' : 'left fullscreen']); syncMenu(); });
+
+  // ---- menu ----
+  function syncMenu() {
+    if (!menuEl) return;
+    const b = menuEl.querySelectorAll('button');
+    b[0].setAttribute('aria-pressed', !!fsElement()); b[0].hidden = !fsEnabled();
+    b[1].setAttribute('aria-pressed', fpsOn); b[2].setAttribute('aria-pressed', !!logEl);
+  }
+  function toggleMenu(force) {
+    const open = force ?? !menuEl;
+    if (open && !menuEl) {
+      menuEl = el('div', 'dk-menu', '<button type="button">Fullscreen</button><button type="button">FPS counter</button><button type="button">Debug log</button>');
+      const [a, b, c] = menuEl.querySelectorAll('button');
+      a.onclick = () => { toggleFs(); toggleMenu(false); }; b.onclick = () => setFps(!fpsOn); c.onclick = () => setLog(!logEl);
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown']) menuEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(menuEl); syncMenu();
+    } else if (!open && menuEl) { menuEl.remove(); menuEl = null; }
+  }
+
+  // ---- keys: capture phase so they work whatever the game does with keydown; never while typing ----
+  addEventListener('keydown', e => {
+    const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (e.code === 'Backquote' && !e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); if (e.shiftKey) setLog(!logEl); else setFps(!fpsOn); }
+    else if (DK.fKey && e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && fsEnabled()) { e.preventDefault(); e.stopImmediatePropagation(); toggleFs(); }
+  }, true);
+  addEventListener('pointerdown', e => { if (menuEl && !menuEl.contains(e.target) && e.target !== btnEl) toggleMenu(false); }, true);
+
+  function mount() {
+    btnEl = el('button', 'dk-btn', '⋯'); btnEl.type = 'button'; btnEl.title = 'Fullscreen · FPS · debug log';
+    btnEl.setAttribute('aria-label', 'Display and debug options');
+    btnEl.addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
+    for (const ev of ['pointerdown', 'touchstart', 'mousedown']) btnEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+    document.body.appendChild(btnEl);
+    if (store.get('devkit.fps', false)) setFps(true);
+    if (store.get('devkit.log', false)) setLog(true);
+    push('g', [`${DK.game} loaded · ${innerWidth}×${innerHeight} @${devicePixelRatio}x · ${navigator.userAgent}`]);
+  }
+  if (document.body) mount(); else addEventListener('DOMContentLoaded', mount);
+
+  // game-facing API: DBG.log('event', data) for notable game events; DBG.warn / DBG.error likewise
+  window.DBG = { log: (...a) => push('g', a), warn: (...a) => push('w', a), error: (...a) => push('e', a), fps: setFps, logPanel: setLog, fullscreen: toggleFs, mountPoint: () => btnEl };
+})();
+</script>
+<script>
 "use strict";
 /* =========================================================
    ZENITHIAN CHRONICLES - a self-contained retro RPG
@@ -366,7 +495,7 @@ const overworldImg=new Image(); overworldImg.src="assets/overworld.png";
 const dungeonImg=new Image(); dungeonImg.src="assets/dungeon.png";
 let assetsReady=0;
 overworldImg.onload=()=>{assetsReady++;};
-dungeonImg.onload=()=>{assetsReady++; try{ drawTitleArt(); }catch(e){}};
+dungeonImg.onload=()=>{assetsReady++; try{ drawTitleArt(); }catch(e){ DBG.error("title art draw failed", e); }};
 function kt(col,row){ return [col*17,row*17,16,16]; }
 const KTILES={
   grass:kt(5,0), grass2:kt(5,0), dirt:kt(6,0), sand:kt(8,0), water:kt(0,4),
@@ -725,10 +854,10 @@ function save(){
   try{
     localStorage.setItem("zenithian_save", JSON.stringify(gs));
     try{ window.claude?.hot?.snapshot?.({gs, screenShown:true}); }catch(e){}
-  }catch(e){}
+  }catch(e){ DBG.error("save failed", e); }
 }
 function hasSave(){ try{ return !!localStorage.getItem("zenithian_save"); }catch(e){ return false; } }
-function loadSave(){ try{ return JSON.parse(localStorage.getItem("zenithian_save")); }catch(e){ return null; } }
+function loadSave(){ try{ return JSON.parse(localStorage.getItem("zenithian_save")); }catch(e){ DBG.error("load save failed", e); return null; } }
 
 /* ===========================================================
    CANVAS / SPRITES
@@ -947,6 +1076,7 @@ function checkWarp(){
   }
 }
 function warpTo(mapId,x,y){
+  DBG.log("warp", gs.player.map, "->", mapId, x+","+y);
   gs.player.map=mapId; gs.player.x=x; gs.player.y=y;
   const m=MAPS[mapId];
   if(m.kind==="town"){ gs.lastSafe={map:mapId,x,y}; }
@@ -1095,6 +1225,7 @@ document.getElementById("bigMsgBtn").addEventListener("click",()=>{
    =========================================================== */
 let shopCtx=null;
 function openShop(shopId,shopName){
+  DBG.log("screen: shop", shopId);
   curMode="shop"; shopCtx={shopId,tab:"buy"};
   document.getElementById("shopLayer").hidden=false;
   document.getElementById("shopTitle").textContent=shopName+" - "+goldDiscountNote();
@@ -1183,6 +1314,7 @@ function openInnPrompt(npc){
    =========================================================== */
 let menuTab="party";
 function openMenu(){
+  DBG.log("screen: menu");
   curMode="menu"; menuTab="party";
   document.getElementById("menuLayer").hidden=false;
   renderMenuTabs(); renderMenuBody();
@@ -1361,6 +1493,7 @@ function pickPool(poolId){
   return group;
 }
 function startBattle(poolId,bossEntry){
+  DBG.log("battle start", bossEntry? "boss "+bossEntry.id : "pool "+poolId, "on", gs.player.map);
   curMode="battle";
   document.getElementById("battleLayer").hidden=false;
   let enemyIds = bossEntry? [bossEntry.id] : pickPool(poolId);
@@ -1637,6 +1770,7 @@ function checkBattleEnd(){
 }
 
 function endBattle(won,fled){
+  DBG.log("battle end:", won?"victory":fled?"fled":"party wiped", battle&&battle.boss?"(boss "+battle.boss.id+")":"");
   if(won){
     let xp=0,gold=0;
     battle.enemies.forEach(e=>{ xp+=e.xp; gold+=e.gold; });
@@ -1653,6 +1787,7 @@ function endBattle(won,fled){
         c.hp=c.maxHp; c.mp=c.maxMp;
         const learn=(SPELL_LEARN[c.id]||{})[c.level];
         if(learn && !c.spells.includes(learn)) c.spells.push(learn);
+        DBG.log("level up:", c.name, "->", c.level, learn?"learned "+learn:"");
         levelUps.push(c.name+" reached level "+c.level+"!"+(learn?" Learned "+SPELLS[learn].name+"!":""));
       }
     });
@@ -1663,6 +1798,7 @@ function endBattle(won,fled){
     if(bossFlag){
       gs.flags[bossFlag.flag]=true;
       if(bossFlag.id==="malkanther"){
+        DBG.log("game complete: Dragon Lord defeated");
         showBigMsg("The Dragon Lord Falls",
           "Malkanther collapses into ash and shadow. The curse over Aldan begins to lift.\n\nYou have completed Zenithian Chronicles. The realm remembers your name.",
           ()=>{ save(); });
@@ -1744,6 +1880,7 @@ function drawTitleArt(){
    =========================================================== */
 const KEYMAP={ArrowUp:"up",ArrowDown:"down",ArrowLeft:"left",ArrowRight:"right",w:"up",s:"down",a:"left",d:"right",W:"up",S:"down",A:"left",D:"right"};
 document.addEventListener("keydown",e=>{
+  if(e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
   if(KEYMAP[e.key]){
     e.preventDefault();
     const dir=KEYMAP[e.key];
@@ -1784,6 +1921,7 @@ document.getElementById("btnMenu").addEventListener("click",()=>{
    BOOT / GAME LOOP
    =========================================================== */
 function startNewGame(){
+  DBG.log("new game");
   const nameInput=document.getElementById("nameInput");
   const name=(nameInput.value||"").trim().slice(0,12) || "Aldric";
   gs=defaultState();
@@ -1792,6 +1930,7 @@ function startNewGame(){
   save();
 }
 function continueGame(data){
+  DBG.log("continue from save:", data && data.player && data.player.map);
   gs=data;
   gs.party.forEach(c=>{ if(c.defending===undefined) c.defending=false; });
   enterGame();
@@ -1804,6 +1943,7 @@ function enterGame(){
   loop();
 }
 function returnToTitle(){
+  DBG.log("screen: title");
   document.getElementById("gameWrap").hidden=true;
   document.getElementById("titleScreen").hidden=false;
   document.getElementById("btnContinue").hidden=!hasSave();
@@ -1818,6 +1958,7 @@ if(hasSave()) document.getElementById("btnContinue").hidden=false;
 
 function bootFromHot(data){
   if(data && data.gs){
+    DBG.log("restored from hot snapshot");
     gs=data.gs;
     gs.party.forEach(c=>{ if(c.defending===undefined) c.defending=false; });
     enterGame();

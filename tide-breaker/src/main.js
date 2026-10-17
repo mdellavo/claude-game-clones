@@ -37,6 +37,9 @@ function saveRecords(r) {
 // Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
 const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
 const LB_GAME = 'tide-breaker';
+// Devkit debug log (index.html); a no-op if the devkit is absent.
+const dbg = (...a) => window.DBG && window.DBG.log(...a);
+const dbgWarn = (...a) => window.DBG && window.DBG.warn(...a);
 async function lbFetch(entry) {
   if (!LB_URL) return null;
   const ctl = new AbortController();
@@ -48,8 +51,12 @@ async function lbFetch(entry) {
       body: JSON.stringify({ game: LB_GAME, ...entry }),
       signal: ctl.signal,
     } : { signal: ctl.signal });
-    return res.ok ? await res.json() : null;
-  } catch {
+    if (!res.ok) { dbgWarn('leaderboard', entry ? 'submit' : 'fetch', 'HTTP', res.status); return null; }
+    const data = await res.json();
+    dbg('leaderboard', entry ? `submit ok, rank ${data && data.rank}` : `fetch ok, ${data && data.scores ? data.scores.length : 0} scores`);
+    return data;
+  } catch (err) {
+    dbgWarn('leaderboard', entry ? 'submit' : 'fetch', 'failed:', err && err.message);
     return null;
   } finally {
     clearTimeout(timer);
@@ -100,6 +107,7 @@ class Game {
     this.particles = new Particles(scene, this.world, course.water.foam);
     this.resize();
     loadingEl.hidden = true;
+    dbg('course loaded:', course.name);
   }
 
   newRace(mode, riderIdx = this.sel.rider) {
@@ -195,6 +203,7 @@ class Game {
 
   showTitle() {
     this.screen = 'title';
+    dbg('screen: title');
     this.setMenu(`
       <div class="title-wrap">
         <div class="title"><h1>TIDEBREAKER</h1><div class="tag">JET-SKI CHAMPIONSHIP</div></div>
@@ -205,6 +214,7 @@ class Game {
 
   showMain() {
     this.screen = 'main';
+    dbg('screen: main menu');
     this.setMenu(`
       <div class="panel" style="max-width:520px">
         <div class="title"><h1 style="font-size:64px">TIDEBREAKER</h1><div class="tag" style="margin-bottom:18px">JET-SKI CHAMPIONSHIP</div></div>
@@ -472,12 +482,14 @@ class Game {
     this.screen = 'race';
     this.paused = false;
     const c = COURSES[courseIdx];
+    dbg('race start:', { course: c.name, mode, rider: this.sel.rider, diff: this.sel.diff, round: mode === 'champ' ? this.champ.round + 1 : undefined });
     hud.subText(mode === 'champ' ? `ROUND ${this.champ.round + 1} — ${c.name.toUpperCase()}` : c.name.toUpperCase(), 3);
   }
 
   showPause() {
     this.paused = true;
     this.screen = 'paused';
+    dbg('paused');
     audio.setEngine({ speed: 0, throttle: 0, airborne: false, active: false });
     this.setMenu(`
       <div class="panel" style="max-width:420px">
@@ -503,9 +515,11 @@ class Game {
     menuEl.innerHTML = '';
     this.paused = false;
     this.screen = 'race';
+    dbg('resumed');
   }
 
   async quitToMenu() {
+    dbg('quit to menu');
     this.paused = false;
     this.champ = null;
     hud.show(false);
@@ -520,6 +534,7 @@ class Game {
     audio.setEngine({ speed: 0, throttle: 0, airborne: false, active: false });
     const rows = race.results();
     const course = this.world.course;
+    { const p = race.player; dbg('race over:', { course: course.name, mode: this.mode, place: rows.findIndex((r) => r.e === p) + 1, time: p.dq ? 'DQ' : +p.finishTime.toFixed(2), misses: p.misses }); }
     let extra = '';
     let champRows = '';
     let buttons;
@@ -586,6 +601,7 @@ class Game {
     const sorted = RIDERS.map((r) => ch.points[r.id]);
     const mine = ch.points[RIDERS[this.sel.rider].id];
     const champion = last && mine >= Math.max(...sorted);
+    dbg('standings after round', ch.round + 1, { points: mine, last, champion });
     if (champion) audio.fanfare();
     this.setMenu(`
       <div class="panel" style="max-width:620px">
@@ -624,7 +640,7 @@ class Game {
     if (this.screen === 'race') {
       if (input.wasPressed('Escape', 'KeyP', 'PadStart')) this.showPause();
       if (input.wasPressed('KeyC')) chase.cycle();
-      if (input.wasPressed('KeyR') && this.race.player && !this.race.player.finished && this.race.state === 'racing') this.race.respawn(this.race.player, this.t);
+      if (input.wasPressed('KeyR') && this.race.player && !this.race.player.finished && this.race.state === 'racing') { dbg('player respawn (R)'); this.race.respawn(this.race.player, this.t); }
     } else if (this.screen === 'paused' && input.wasPressed('KeyP')) {
       this.resume();
     }

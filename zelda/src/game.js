@@ -86,6 +86,7 @@ export class Game {
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => this.resize());
     this.last = performance.now();
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
@@ -261,7 +262,7 @@ export class Game {
           onTaken: () => { st.itemTaken = true; if (room.item.kind === 'triforce') this.pendingWin = 4.6; },
         }));
       }
-      if (room.boss && !st.cleared) this.ui.flashToast('AQUAMENTUS');
+      if (room.boss && !st.cleared) { this.ui.flashToast('AQUAMENTUS'); window.DBG?.log('boss fight: Aquamentus', key); }
     }
   }
 
@@ -356,6 +357,7 @@ export class Game {
 
   enterCave(tx, tz) {
     const caveId = `${Math.floor(tx / W)},${Math.floor(tz / H)}`;
+    window.DBG?.log('enter cave', caveId);
     this.caveReturn = { screen: { ...this.screen }, x: tx + 0.5, z: tz + 1.4 };
     this.transition(() => {
       this.setArea(this.cave, 8, 9.2, DIRS.up, { spawn: false });
@@ -365,11 +367,13 @@ export class Game {
 
   exitCave() {
     const r = this.caveReturn;
+    window.DBG?.log('leave cave');
     this.transition(() => this.setArea(this.overworld, r.x, r.z, DIRS.down));
   }
 
   enterDungeon(tx, tz) {
     this.dungeonReturn = { x: tx + 0.5, z: tz + 1.4 };
+    window.DBG?.log('enter dungeon LEVEL-1');
     this.transition(() => {
       const rx = ENTRANCE_ROOM.col * W, rz = ENTRANCE_ROOM.row * H;
       this.setArea(this.dungeon, rx + 8, rz + 8.4, DIRS.up);
@@ -379,6 +383,7 @@ export class Game {
 
   exitDungeon() {
     const r = this.dungeonReturn || { x: 2 * W + 7.5, z: 1.4 };
+    window.DBG?.log('leave dungeon');
     this.transition(() => this.setArea(this.overworld, r.x, r.z, DIRS.down));
   }
 
@@ -441,6 +446,7 @@ export class Game {
 
   killPlayer() {
     const p = this.player;
+    window.DBG?.log('player died', this.area.kind, this.roomKey());
     p.state = 'dying';
     p.dieT = 0;
     p.model.parts.sword.visible = false;
@@ -450,12 +456,14 @@ export class Game {
     setTimeout(() => {
       this.mode = 'gameover';
       this.ui.showGameOver();
+      window.DBG?.log('game over');
     }, 2400);
   }
 
   continueGame() {
     const p = this.player;
     this.ui.hideOverlay();
+    window.DBG?.log('continue');
     p.reset();
     p.hp = Math.min(p.maxHp, 6);
     p.model.group.scale.setScalar(1);
@@ -478,6 +486,7 @@ export class Game {
 
   onEnemyKilled(e) {
     if (e.boss) {
+      window.DBG?.log('boss defeated');
       this.bossDeathAt = { x: e.x - 1.5, z: e.z };
       this.shake(0.5);
       return;
@@ -613,6 +622,7 @@ export class Game {
       if (this.pendingWin <= 0) {
         this.mode = 'win';
         this.ui.showWin();
+        window.DBG?.log('win: triforce shard recovered');
       }
       return;
     }
@@ -733,6 +743,7 @@ export class Game {
           sfx.item();
           this.ui.hideOverlay();
           this.mode = 'play';
+          window.DBG?.log('game start');
         }
         this.player.update(dt, { pressed: () => false, held: () => false, direction: () => null });
         break;

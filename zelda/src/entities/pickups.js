@@ -66,6 +66,7 @@ export class Pickup extends Entity {
       case 'triforce': p.triforce++; break;
     }
     if (HOLD.has(this.kind)) {
+      window.DBG?.log('item', this.kind, this.price ? `bought for ${this.price}` : '');
       p.holdItem(this.kind, this.kind === 'triforce' ? 4.5 : 1.3);
       if (this.kind === 'triforce') sfx.fanfare();
       else sfx.item();

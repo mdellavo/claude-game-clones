@@ -25,8 +25,9 @@ function load(key, fallback) {
 function save(key, v) {
   try {
     localStorage.setItem(key, JSON.stringify(v));
-  } catch {
+  } catch (err) {
     /* storage unavailable */
+    window.DBG?.error('save failed:', key, err?.message);
   }
 }
 
@@ -45,7 +46,8 @@ async function lbFetch(entry) {
       signal: ctl.signal,
     } : { signal: ctl.signal });
     return res.ok ? await res.json() : null;
-  } catch {
+  } catch (err) {
+    window.DBG?.warn('leaderboard fetch failed:', err?.message);
     return null;
   } finally {
     clearTimeout(timer);
@@ -132,6 +134,7 @@ export class App {
     if (!this.roster) this.newRoster();
     else this.nextSoldierId = Math.max(0, ...this.roster.map((s) => s.id)) + 1;
     this.fillRoster();
+    window.DBG?.log('roster ready:', this.roster.length, 'soldiers');
   }
 
   newRoster() {
@@ -170,6 +173,7 @@ export class App {
 
   // ---------------------------------------------------------------- title
   showTitle() {
+    window.DBG?.log('screen: title');
     const s = this.screen('title-screen');
     s.append(
       h('div', { class: 'logo' }, 'X-COM'),
@@ -215,6 +219,7 @@ export class App {
 
   // ---------------------------------------------------------------- setup
   showSetup() {
+    window.DBG?.log('screen: mission setup');
     const s = this.screen();
     const o = this.opts;
     const brief = h('div', { class: 'briefing' });
@@ -404,6 +409,7 @@ export class App {
     const s = this.screen();
     s.className = 'battle';
     const seed = (Math.random() * 2 ** 31) >>> 0;
+    window.DBG?.log('mission start', { ...this.opts, squad: squad.length, seed });
     const rng = new RNG(seed);
     const battle = createBattle({ opts: this.opts, soldiers: squad, rng });
     this.hud = new BattleHud(s, battle, {
@@ -414,6 +420,8 @@ export class App {
 
   // ---------------------------------------------------------------- debrief
   showDebrief(res) {
+    window.DBG?.log('mission end:', res.result, { score: res.score, rating: res.rating, turns: res.turns,
+      lost: res.soldiers.filter((x) => x.fate === 'KIA' || x.fate === 'MIA').length });
     // update roster
     for (const { unit, fate } of res.soldiers) {
       const sol = this.roster.find((r) => r.id === unit.soldier.id);
@@ -438,6 +446,7 @@ export class App {
       if (want > sol.rank) {
         sol.rank = want;
         unit.promoted = true;
+        window.DBG?.log('promoted:', sol.name, 'to rank', want);
       }
     }
     this.fillRoster();

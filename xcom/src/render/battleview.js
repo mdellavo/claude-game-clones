@@ -108,6 +108,7 @@ export class BattleView {
 
     this.onResize = () => this.resize();
     window.addEventListener('resize', this.onResize);
+    document.addEventListener('fullscreenchange', this.onResize);
     this.resize();
     this.running = true;
     const loop = () => {
@@ -128,6 +129,7 @@ export class BattleView {
   dispose() {
     this.running = false;
     window.removeEventListener('resize', this.onResize);
+    document.removeEventListener('fullscreenchange', this.onResize);
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.scene.traverse((o) => {
@@ -653,6 +655,7 @@ export class BattleView {
   }
 
   unitDown(u, state) {
+    window.DBG?.log(`${u.faction} down: ${u.name} (${state})`);
     const v = this.unitViews.get(u.id);
     if (!v) return;
     const vis = this.unitVisible(u) || this.battle.visibleToPlayer(u) || this.map.discovered[this.map.idx(u.x, u.y, u.z)];
@@ -690,6 +693,7 @@ export class BattleView {
   }
 
   turnStarted(side, turn) {
+    window.DBG?.log(`turn ${turn}: ${side} side`);
     this.fogDirty = true;
     this.atmoDirty = true;
     this.itemsDirty = true;

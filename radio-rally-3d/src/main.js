@@ -30,8 +30,10 @@ async function lbFetch(entry) {
       body: JSON.stringify({ game: LB_GAME, ...entry }),
       signal: ctl.signal,
     } : { signal: ctl.signal });
+    if (!res.ok) window.DBG?.warn('leaderboard', entry ? 'submit' : 'fetch', 'HTTP', res.status);
     return res.ok ? await res.json() : null;
-  } catch {
+  } catch (err) {
+    window.DBG?.warn('leaderboard', entry ? 'submit' : 'fetch', 'failed:', err && err.message);
     return null;
   } finally {
     clearTimeout(timer);
@@ -90,6 +92,7 @@ class Game {
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.5, 2000);
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    window.DBG?.log('renderer ready', `${innerWidth}×${innerHeight}`, 'pixelRatio', this.renderer.getPixelRatio(), 'WebGL2', this.renderer.capabilities.isWebGL2);
 
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x445544, 1.2);
     this.scene.add(this.hemi);
@@ -157,6 +160,7 @@ class Game {
     this.superTruck = 0;
     this.player.missiles = 3;
     this.player.bombs = 1;
+    window.DBG?.log('new game');
     this.loadTrack(0);
   }
 
@@ -180,6 +184,7 @@ class Game {
     const def = TRACKS[index];
     this.track = new Track(def);
     const theme = def.theme;
+    window.DBG?.log('load track', index + 1, def.name, preview ? '(title preview)' : `laps ${def.laps} round ${(this.round || 0) + 1}`);
 
     if (this.world) {
       this.scene.remove(this.world);
@@ -238,6 +243,7 @@ class Game {
   }
 
   setState(s) {
+    if (s !== this.state) window.DBG?.log('state', this.state, '→', s);
     this.state = s;
     this.stateTime = 0;
     this.msgTimer = 0;
@@ -335,6 +341,7 @@ class Game {
     }
     if (inp.hit('pause') && ['countdown', 'race', 'finished'].includes(this.state)) {
       this.paused = !this.paused;
+      window.DBG?.log(this.paused ? 'paused' : 'resumed');
       $('pause').classList.toggle('hidden', !this.paused);
     }
 
@@ -480,6 +487,7 @@ class Game {
 
   playerFinished() {
     const place = this.finishOrder.indexOf(this.player) + 1;
+    window.DBG?.log('player finished', `${place}${ordinal(place)}`, this.player.dnf ? 'DNF' : fmtTime(this.player.finishTime));
     this.setState('finished');
     $('msg').textContent = `${place}${ordinal(place)}`;
     $('submsg').textContent = place <= 3 ? 'QUALIFIED!' : 'DID NOT QUALIFY';
@@ -511,6 +519,7 @@ class Game {
       verdict = this.lives > 0 ? `<span class="bad">LIFE LOST · ${this.lives} LEFT</span>` : `<span class="bad">GAME OVER</span>`;
     }
     $('res-verdict').innerHTML = verdict;
+    window.DBG?.log('results', `place ${place}`, `score ${this.score}`, `lives ${this.lives}`, this.lives <= 0 ? 'GAME OVER' : '');
     const u = this.upgrades;
     $('res-stats').innerHTML = `SCORE ${this.score}<br>ENGINE ${u.engine} · TIRES ${u.tires} · BATTERY ${u.battery}<br>LETTERS ${WORD.split('').map((ch, i) => (this.letters[i] ? ch : '_')).join(' ')}`;
     $('msg').textContent = '';
@@ -564,8 +573,8 @@ class Game {
     const run = this.lbRun;
     lbFetch().then((r) => {
       if (run !== this.lbRun || this.lbSent) return;
-      if (r && Array.isArray(r.scores)) this.lbRender(r.scores);
-      else $('lb-note').textContent = 'LEADERBOARD OFFLINE';
+      if (r && Array.isArray(r.scores)) { window.DBG?.log('leaderboard loaded', r.scores.length, 'scores'); this.lbRender(r.scores); }
+      else { window.DBG?.warn('leaderboard offline'); $('lb-note').textContent = 'LEADERBOARD OFFLINE'; }
     });
   }
 
@@ -578,15 +587,18 @@ class Game {
     $('lb-name').disabled = $('lb-send').disabled = true;
     $('lb-name').blur();
     $('lb-note').textContent = 'SENDING…';
+    window.DBG?.log('leaderboard submit', name, Math.round(this.score));
     const r = await lbFetch({ name, score: Math.max(0, Math.round(this.score)) });
     if (run !== this.lbRun) return;
     if (!r || !Array.isArray(r.scores)) {
+      window.DBG?.warn('leaderboard submit not sent');
       // let the player try again
       this.lbSent = false;
       $('lb-name').disabled = $('lb-send').disabled = false;
       $('lb-note').textContent = 'OFFLINE · NOT SENT';
       return;
     }
+    window.DBG?.log('leaderboard submitted, rank', r.rank || 'none');
     $('lb-form').classList.add('hidden');
     $('lb-note').textContent = r.rank ? `YOU RANKED #${r.rank}` : 'NOT IN THE TOP 50';
     this.lbRender(r.scores, r.rank);

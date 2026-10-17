@@ -255,6 +255,7 @@ export class Race {
           e.finished = true;
           c.coast = true;
           if (e.isPlayer) {
+            if (window.DBG) window.DBG.log('player disqualified:', e.misses, 'missed buoys');
             this.hud.message('DISQUALIFIED', 'bad', 4);
             this.becomeAI(e);
           }
@@ -268,6 +269,7 @@ export class Race {
       e.lapsDone++;
       e.lapTimes.push(this.time - e.lapStart);
       e.lapStart = this.time;
+      if (e.isPlayer && window.DBG) window.DBG.log('player lap', e.lapsDone, 'of', this.laps, (e.lapTimes[e.lapTimes.length - 1]).toFixed(2) + 's');
       if (e.lapsDone >= this.laps) {
         e.finished = true;
         e.finishTime = this.time;

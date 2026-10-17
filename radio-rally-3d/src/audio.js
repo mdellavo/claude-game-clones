@@ -15,6 +15,7 @@ export class Audio {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
+    window.DBG?.log('audio init', this.ctx.state, this.ctx.sampleRate + 'Hz');
     this.master = this.ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.6;
     this.master.connect(this.ctx.destination);
