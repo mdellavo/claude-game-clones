@@ -3,6 +3,133 @@
 <title>Sundown Highway</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Audiowide&family=Chakra+Petch:ital,wght@0,500;0,600;0,700;1,700&display=swap">
+<!-- devkit: fullscreen, FPS counter, debug log. Shared across the games in this repo; keep copies identical
+     apart from the config line. Keys: ` (Backquote) FPS counter · Shift+` debug log · F fullscreen (if the game
+     does not use F). The ⋯ button (all devices) opens the same three toggles. -->
+<style>
+#dk-btn{position:fixed;z-index:2147483000;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));width:30px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;font:700 16px/1 system-ui,sans-serif;cursor:pointer;opacity:.55;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#dk-btn:hover,#dk-btn:focus-visible{opacity:1}
+#dk-menu{position:fixed;z-index:2147483001;top:calc(44px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:10px;background:rgba(10,12,20,.92);border:1px solid rgba(255,255,255,.2);font:600 13px/1.2 system-ui,sans-serif}
+#dk-menu button{all:unset;cursor:pointer;color:#fff;padding:8px 12px;border-radius:6px;white-space:nowrap}
+#dk-menu button:hover,#dk-menu button:focus-visible{background:rgba(255,255,255,.12)}
+#dk-menu button[aria-pressed=true]::after{content:" ✓";color:#7cf}
+#dk-fps{position:fixed;z-index:2147483000;left:calc(6px + env(safe-area-inset-left));bottom:calc(6px + env(safe-area-inset-bottom));padding:3px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:#7f7;font:600 11px/1.25 ui-monospace,Menlo,Consolas,monospace;white-space:pre;pointer-events:none}
+#dk-log{position:fixed;z-index:2147482999;left:calc(6px + env(safe-area-inset-left));right:calc(6px + env(safe-area-inset-right));bottom:calc(34px + env(safe-area-inset-bottom));max-height:38vh;display:flex;flex-direction:column;border-radius:6px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.18);font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;color:#ddd}
+#dk-log .dk-bar{display:flex;gap:6px;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.12);align-items:center}
+#dk-log .dk-bar span{flex:1;opacity:.7}
+#dk-log .dk-bar button{all:unset;cursor:pointer;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.12);color:#fff}
+#dk-lines{overflow-y:auto;padding:4px 6px;white-space:pre-wrap;word-break:break-word;overscroll-behavior:contain}
+#dk-lines .w{color:#fd6}#dk-lines .e{color:#f77}#dk-lines .g{color:#8cf}
+</style>
+<script>
+(() => {
+  // config: game name for the log header, and whether F is free for fullscreen
+  const DK = { game: 'Sundown Highway', fKey: true };
+  const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+  const el = (tag, id, html) => { const e = document.createElement(tag); if (id) e.id = id; if (html != null) e.innerHTML = html; return e; };
+  const t0 = performance.now(), lines = [], MAX = 400;
+  let logEl = null, linesEl = null, fpsEl = null, menuEl = null, btnEl = null;
+
+  // ---- log capture: console.*, uncaught errors, rejected promises, plus game events via DBG.log ----
+  const fmt = a => a.map(x => { if (x instanceof Error) return x.stack || x.message; if (typeof x === 'object' && x !== null) { try { return JSON.stringify(x); } catch { return String(x); } } return String(x); }).join(' ');
+  function push(level, args) {
+    const s = ((performance.now() - t0) / 1000).toFixed(2).padStart(7) + ' ' + fmt(args);
+    lines.push([level, s]); if (lines.length > MAX) lines.shift();
+    if (linesEl) { const d = document.createElement('div'); d.className = level; d.textContent = s; linesEl.appendChild(d); while (linesEl.childNodes.length > MAX) linesEl.firstChild.remove(); const atEnd = linesEl.scrollHeight - linesEl.scrollTop - linesEl.clientHeight < 40; if (atEnd) linesEl.scrollTop = linesEl.scrollHeight; }
+  }
+  for (const [m, lv] of [['log', ''], ['info', ''], ['debug', ''], ['warn', 'w'], ['error', 'e']]) { const o = console[m].bind(console); console[m] = (...a) => { push(lv, a); o(...a); }; }
+  addEventListener('error', e => push('e', [e.message + (e.filename ? ` (${e.filename.split('/').pop()}:${e.lineno})` : '')]));
+  addEventListener('unhandledrejection', e => push('e', ['unhandled rejection:', e.reason]));
+
+  // ---- FPS counter: its own rAF loop, so it measures what the display actually shows ----
+  let fpsOn = false, frames = 0, acc = 0, worst = 0, last = 0, raf = 0;
+  function fpsLoop(t) {
+    raf = requestAnimationFrame(fpsLoop);
+    if (last) { const d = t - last; frames++; acc += d; worst = Math.max(worst, d); }
+    last = t;
+    if (acc >= 500) { fpsEl.textContent = `${Math.round(frames * 1000 / acc)} fps  ${(acc / frames).toFixed(1)} ms  max ${worst.toFixed(0)}`; frames = 0; acc = 0; worst = 0; }
+  }
+  function setFps(on) {
+    fpsOn = on; store.set('devkit.fps', on);
+    if (on && !fpsEl) { fpsEl = el('div', 'dk-fps', '-- fps'); document.body.appendChild(fpsEl); last = 0; frames = acc = worst = 0; raf = requestAnimationFrame(fpsLoop); }
+    if (!on && fpsEl) { cancelAnimationFrame(raf); fpsEl.remove(); fpsEl = null; }
+    syncMenu();
+  }
+  function setLog(on) {
+    store.set('devkit.log', on);
+    if (on && !logEl) {
+      logEl = el('div', 'dk-log', `<div class="dk-bar"><span>${DK.game} · debug log</span><button type="button" data-a="copy">copy</button><button type="button" data-a="clear">clear</button><button type="button" data-a="close">×</button></div><div id="dk-lines"></div>`);
+      linesEl = logEl.querySelector('#dk-lines');
+      for (const [lv, s] of lines) { const d = document.createElement('div'); d.className = lv; d.textContent = s; linesEl.appendChild(d); }
+      logEl.addEventListener('click', e => { const a = e.target.dataset && e.target.dataset.a; if (a === 'clear') { lines.length = 0; linesEl.textContent = ''; } if (a === 'copy') navigator.clipboard && navigator.clipboard.writeText(lines.map(l => l[1]).join('\n')).catch(() => {}); if (a === 'close') setLog(false); });
+      // keep taps and keys on the panel from reaching the game
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown', 'wheel']) logEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(logEl); linesEl.scrollTop = linesEl.scrollHeight;
+    }
+    if (!on && logEl) { logEl.remove(); logEl = linesEl = null; }
+    syncMenu();
+  }
+
+  // ---- fullscreen ----
+  const fsEnabled = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function toggleFs() {
+    try {
+      if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      const r = document.documentElement; const p = (r.requestFullscreen || r.webkitRequestFullscreen).call(r, { navigationUI: 'hide' });
+      if (p && p.catch) p.catch(err => push('w', ['fullscreen refused:', err && err.message]));
+    } catch (err) { push('w', ['fullscreen failed:', err && err.message]); }
+  }
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { push('g', [fsElement() ? 'entered fullscreen' : 'left fullscreen']); syncMenu(); });
+
+  // ---- menu ----
+  function syncMenu() {
+    if (!menuEl) return;
+    const b = menuEl.querySelectorAll('button');
+    b[0].setAttribute('aria-pressed', !!fsElement()); b[0].hidden = !fsEnabled();
+    b[1].setAttribute('aria-pressed', fpsOn); b[2].setAttribute('aria-pressed', !!logEl);
+  }
+  function toggleMenu(force) {
+    const open = force ?? !menuEl;
+    if (open && !menuEl) {
+      menuEl = el('div', 'dk-menu', '<button type="button">Fullscreen</button><button type="button">FPS counter</button><button type="button">Debug log</button>');
+      const [a, b, c] = menuEl.querySelectorAll('button');
+      a.onclick = () => { toggleFs(); toggleMenu(false); }; b.onclick = () => setFps(!fpsOn); c.onclick = () => setLog(!logEl);
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown']) menuEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(menuEl); syncMenu();
+    } else if (!open && menuEl) { menuEl.remove(); menuEl = null; }
+  }
+
+  // ---- keys: capture phase so they work whatever the game does with keydown; never while typing ----
+  addEventListener('keydown', e => {
+    const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (e.code === 'Backquote' && !e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); if (e.shiftKey) setLog(!logEl); else setFps(!fpsOn); }
+    else if (DK.fKey && e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && fsEnabled()) { e.preventDefault(); e.stopImmediatePropagation(); toggleFs(); }
+  }, true);
+  addEventListener('pointerdown', e => { if (menuEl && !menuEl.contains(e.target) && e.target !== btnEl) toggleMenu(false); }, true);
+
+  function mount() {
+    btnEl = el('button', 'dk-btn', '⋯'); btnEl.type = 'button'; btnEl.title = 'Fullscreen · FPS · debug log';
+    btnEl.setAttribute('aria-label', 'Display and debug options');
+    btnEl.addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
+    for (const ev of ['pointerdown', 'touchstart', 'mousedown']) btnEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+    document.body.appendChild(btnEl);
+    if (store.get('devkit.fps', false)) setFps(true);
+    if (store.get('devkit.log', false)) setLog(true);
+    push('g', [`${DK.game} loaded · ${innerWidth}×${innerHeight} @${devicePixelRatio}x · ${navigator.userAgent}`]);
+  }
+  if (document.body) mount(); else addEventListener('DOMContentLoaded', mount);
+
+  // game-facing API: DBG.log('event', data) for notable game events; DBG.warn / DBG.error likewise
+  window.DBG = { log: (...a) => push('g', a), warn: (...a) => push('w', a), error: (...a) => push('e', a), fps: setFps, logPanel: setLog, fullscreen: toggleFs, mountPoint: () => btnEl };
+})();
+</script>
+<style>
+/* devkit placement: below the stage name, progress bar and route map (top-right); higher up when the map hides in landscape */
+#dk-btn{top:calc(150px + env(safe-area-inset-top))}
+#dk-menu{top:calc(186px + env(safe-area-inset-top))}
+@media (max-height:500px){#dk-btn{top:calc(64px + env(safe-area-inset-top))}#dk-menu{top:calc(100px + env(safe-area-inset-top))}}
+</style>
 <style>
 [hidden]{display:none!important}
 :root{--sun:#ffb81f;--hot:#ff3d7f;--vio:#8a5cff;--cyan:#4ff3ff;--ink:#0a0612;--panel:rgba(14,8,24,.68);--line:rgba(255,120,150,.38)}
@@ -225,8 +352,10 @@ async function lbFetch(entry) {
       body: JSON.stringify({ game: LB_GAME, ...entry }),
       signal: ctl.signal,
     } : { signal: ctl.signal });
+    if (!res.ok) DBG.warn('leaderboard', entry ? 'submit' : 'fetch', 'HTTP', res.status);
     return res.ok ? await res.json() : null;
-  } catch {
+  } catch (err) {
+    DBG.warn('leaderboard', entry ? 'submit' : 'fetch', 'failed:', err && (err.name === 'AbortError' ? 'timeout' : err.message));
     return null;
   } finally {
     clearTimeout(timer);
@@ -1201,7 +1330,7 @@ let ac = null, master, musicBus, sfxBus, noiseBuf, reverb, delay, eng = null, mu
 function initAudio() {
   if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-  ac = new AC(); master = ac.createGain(); master.gain.value = muted ? 0 : .85; master.connect(ac.destination);
+  ac = new AC(); DBG.log('audio init', ac.state, ac.sampleRate + 'Hz', muted ? '(muted)' : ''); master = ac.createGain(); master.gain.value = muted ? 0 : .85; master.connect(ac.destination);
   const comp = ac.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.connect(master);
   musicBus = ac.createGain(); musicBus.gain.value = .42; musicBus.connect(comp);
   sfxBus = ac.createGain(); sfxBus.gain.value = .8; sfxBus.connect(comp);
@@ -1273,6 +1402,7 @@ const radio = { i: store.get('sh-radio', 0), step: 0, next: 0, timer: 0, playing
 function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 function radioPlay(i) {
   radio.i = i; store.set('sh-radio', i); radioStop(); renderStations();
+  DBG.log('radio', i < 0 ? 'off' : `FM ${STATIONS[i].fm} ${STATIONS[i].name}`);
   if (!ac || i < 0) return;
   radio.step = 0; radio.next = ac.currentTime + .08; radio.playing = true;
   radio.timer = setInterval(radioTick, 25);
@@ -1323,10 +1453,11 @@ function startRace() {
   for (const id of ['title', 'over', 'pause']) $(id).hidden = true;
   $('hud').hidden = false; $('touch').hidden = !isTouch;
   state = 'countdown'; updateStageHUD(); spawnInitialTraffic();
+  DBG.log('race start · state countdown', `DPR ${DPR.toFixed(2)}`, `traffic ${traffic.length}`);
 }
 function toTitle() {
   for (const id of ['over', 'pause', 'hud', 'touch']) $(id).hidden = true;
-  $('title').hidden = false; state = 'title'; resetWorld(); updateBestLine();
+  $('title').hidden = false; state = 'title'; resetWorld(); updateBestLine(); DBG.log('state title');
   setTimeout(() => $('startBtn').focus({ preventScroll: true }), 30);
 }
 function updateBestLine() { $('bestLine').textContent = best ? `BEST SCORE ${fmtN(best)}` : 'Fork left for the easier road, right for the harder one.'; }
@@ -1447,7 +1578,7 @@ function endDrift(award) {
 }
 function crash(type) {
   if (P.crash) return;
-  G.crashes++; endDrift(false); G.combo = 0;
+  G.crashes++; endDrift(false); G.combo = 0; DBG.log('crash', type, `${Math.round(P.v * 3.6)} km/h`, `#${G.crashes}`);
   P.crash = { t: 0, y: 0, vy: 9, rx: 0, rz: 0, wx: rand(5, 8) * (Math.random() < .5 ? -1 : 1), wz: rand(3, 6) * (Math.random() < .5 ? -1 : 1) };
   sfx('crash'); shake = 1.2; flash(.35);
   worldAt(P.stage, P.s, P.x, .6, _v);
@@ -1467,6 +1598,7 @@ function updateCrash(dt) {
 function spinOut(dir) { if (P.spin > 0 || P.crash) return; P.spin = 1.1; P.spinDir = dir || 1; P.v *= .55; endDrift(false); G.combo = 0; sfx('bump'); shake = .8; }
 
 function enterStage(st) {
+  const prev = G.route[G.route.length - 1]; DBG.log(`fork ${prev && st.col > prev[1] ? 'right' : 'left'} → stage ${st.level} ${st.name}`, `time ${G.time.toFixed(1)}s`);
   G.level = st.level; G.route.push([st.level, st.col]);
   for (const t of traffic) t.dead = true;
   updateStageHUD();
@@ -1474,7 +1606,7 @@ function enterStage(st) {
 }
 function checkpoint() {
   const bonus = BONUS[P.stage.level - 1];
-  G.time += bonus; sfx('check'); flash(.15);
+  G.time += bonus; sfx('check'); flash(.15); DBG.log('checkpoint', P.stage.name, `+${bonus}s`, `time left ${G.time.toFixed(1)}s`, `score ${Math.round(G.score)}`);
   msg('CHECKPOINT', `${P.stage.name.toUpperCase()} · EXTENDED PLAY +${bonus}s`, 2.4);
 }
 
@@ -1771,6 +1903,7 @@ function updateStageHUD() {
 function endRun(goal) {
   state = 'over'; $('hud').hidden = true; $('touch').hidden = true;
   const timeBonus = goal ? Math.round(G.time) * 20000 : 0; G.score += timeBonus;
+  DBG.log('state over', goal ? 'goal' : 'time up', `score ${Math.round(G.score)}`, `dist ${(G.dist / 1000).toFixed(1)}km`, `crashes ${G.crashes}`);
   const newBest = G.score > best; if (newBest) { best = G.score; store.set('sh-best', best); }
   $('ovEye').textContent = goal ? 'YOU MADE IT TO THE END OF THE ROAD' : `STAGE ${P.stage.level} · ${P.stage.name.toUpperCase()}`;
   $('ovTitle').textContent = goal ? 'GOAL!' : 'TIME UP';
@@ -1799,7 +1932,7 @@ function lbOpen(score) {
   const run = ++lbRun; lbScore = score; lbSent = false;
   $('lb').hidden = false; $('lbForm').hidden = score == null; $('lbSend').disabled = false; $('lbName').value = String(store.get('sh-name', '')).slice(0, 12);
   $('lbNote').textContent = 'Loading the board…'; lbRender([]);
-  lbFetch().then(d => { if (run !== lbRun || lbSent) return; if (d) { lbRender(d.scores); $('lbNote').textContent = d.scores && d.scores.length ? '' : 'No scores yet. Be the first.'; } else $('lbNote').textContent = 'Board offline.'; });
+  lbFetch().then(d => { if (d) DBG.log('leaderboard fetched', (d.scores || []).length, 'scores'); if (run !== lbRun || lbSent) return; if (d) { lbRender(d.scores); $('lbNote').textContent = d.scores && d.scores.length ? '' : 'No scores yet. Be the first.'; } else $('lbNote').textContent = 'Board offline.'; });
 }
 $('lbForm').addEventListener('submit', e => {
   e.preventDefault(); if (lbSent || lbScore == null) return;
@@ -1807,6 +1940,7 @@ $('lbForm').addEventListener('submit', e => {
   const run = lbRun; lbSent = true; $('lbSend').disabled = true; store.set('sh-name', name); $('lbNote').textContent = 'Sending…';
   lbFetch({ name, score: lbScore }).then(d => {
     if (run !== lbRun) return;
+    if (d) DBG.log('score submitted', lbScore, 'rank', d.rank ?? 'none');
     if (!d) { lbSent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'Board offline. Your score was not sent.'; return; }
     $('lbForm').hidden = true; lbRender(d.scores, d.rank);
     $('lbNote').textContent = d.rank ? `You are #${d.rank} on the board with ${fmtN(lbScore)}.` : `${fmtN(lbScore)} did not make the board.`;
@@ -1855,8 +1989,8 @@ function readInput() {
   input.steer = clamp(steer, -1, 1); input.gas = gas; input.brake = brake; input.nitro = nitro;
 }
 function togglePause() {
-  if (state.startsWith('paused:')) { state = state.slice(7); $('pause').hidden = true; if (ac) ac.resume(); }
-  else { state = 'paused:' + state; $('pause').hidden = false; if (ac) ac.suspend(); setTimeout(() => $('resumeBtn').focus({ preventScroll: true }), 30); }
+  if (state.startsWith('paused:')) { state = state.slice(7); $('pause').hidden = true; if (ac) ac.resume(); DBG.log('resumed · state', state); }
+  else { DBG.log('state paused (from ' + state + ')'); state = 'paused:' + state; $('pause').hidden = false; if (ac) ac.suspend(); setTimeout(() => $('resumeBtn').focus({ preventScroll: true }), 30); }
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden && (state === 'race' || state === 'countdown')) togglePause(); });
 $('startBtn').addEventListener('click', startRace);
@@ -1875,13 +2009,13 @@ function step(dt) {
   readInput();
   if (state === 'countdown') {
     G.cd -= dt; const n = Math.ceil(G.cd - .4);
-    if (n !== G.cdShown && n >= 0) { G.cdShown = n; if (n > 0) { sfx('beep'); msg(String(n), '', .9); } else { sfx('go'); msg('GO!', 'CHASE THE SUNSET', 1.2); state = 'race'; } }
+    if (n !== G.cdShown && n >= 0) { G.cdShown = n; if (n > 0) { sfx('beep'); msg(String(n), '', .9); } else { sfx('go'); msg('GO!', 'CHASE THE SUNSET', 1.2); state = 'race'; DBG.log('state race'); } }
     if (root.startLights) root.startLights.forEach((m, i) => m.material.color.set(n <= 0 ? 0x22ff44 : i >= n - 1 ? 0xff2020 : 0x220000).multiplyScalar(n <= 0 || i >= n - 1 ? 4 : 1));
   }
   if (state === 'race') {
     G.time -= dt;
     if (G.time < 10 && Math.ceil(G.time) !== G.lowBeep && G.time > 0) { G.lowBeep = Math.ceil(G.time); sfx('warn'); }
-    if (G.time <= 0) { G.time = 0; state = 'timeup'; G.endT = 0; msg('TIME UP', 'OUT OF ROAD AND OUT OF TIME', 4); endDrift(false); }
+    if (G.time <= 0) { G.time = 0; state = 'timeup'; G.endT = 0; DBG.log('state timeup', `stage ${P.stage.level} ${P.stage.name}`, `score ${Math.round(G.score)}`); msg('TIME UP', 'OUT OF ROAD AND OUT OF TIME', 4); endDrift(false); }
   }
   const sub = Math.ceil(dt / (1 / 90)), h = dt / sub;
   const prevS = P.s, prevStage = P.stage;
@@ -1889,7 +2023,7 @@ function step(dt) {
   if (P.stage === prevStage && (state === 'race' || state === 'timeup' || state === 'goal')) G.dist += Math.max(0, P.s - prevS);
   if (state === 'race') { G.score += P.v * dt * 10; }
   if (P.checkpointPending && P.s >= 40) { P.checkpointPending = false; if (state === 'race') checkpoint(); }
-  if (state === 'race' && P.stage.final && P.s >= P.stage.goalS) { state = 'goal'; G.endT = 0; msg('GOAL!', `TIME BONUS ${Math.round(G.time)}s × 20,000`, 5); sfx('goal'); flash(.4); endDrift(true); }
+  if (state === 'race' && P.stage.final && P.s >= P.stage.goalS) { state = 'goal'; G.endT = 0; DBG.log('state goal', `time left ${G.time.toFixed(1)}s`, `score ${Math.round(G.score)}`); msg('GOAL!', `TIME BONUS ${Math.round(G.time)}s × 20,000`, 5); sfx('goal'); flash(.4); endDrift(true); }
   if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 0; }
   if (state === 'timeup' || state === 'goal') { G.endT += dt; if ((state === 'timeup' && (P.v < .5 || G.endT > 6)) || (state === 'goal' && G.endT > 4.5)) endRun(state === 'goal'); }
   updateTraffic(dt);
@@ -1935,8 +2069,8 @@ function adaptRes(ms) {
   if (state !== 'race') return;
   adMs[adN++] = Math.min(ms, 200); if (adN < adMs.length) return;
   adN = 0; const med = adMs.slice().sort()[adMs.length >> 1];
-  if (med > 21 && DPR > DPR_MIN) { DPR = Math.max(DPR_MIN, DPR * .85); adGood = 0; resize(); }
-  else if (med < 17.5 && DPR < DPR_MAX) { if (++adGood >= 6) { DPR = Math.min(DPR_MAX, DPR * 1.1); adGood = 0; resize(); } }
+  if (med > 21 && DPR > DPR_MIN) { const o = DPR; DPR = Math.max(DPR_MIN, DPR * .85); adGood = 0; resize(); DBG.log('adaptive res down', o.toFixed(2), '→', DPR.toFixed(2), `median ${med.toFixed(1)}ms`); }
+  else if (med < 17.5 && DPR < DPR_MAX) { if (++adGood >= 6) { const o = DPR; DPR = Math.min(DPR_MAX, DPR * 1.1); adGood = 0; resize(); DBG.log('adaptive res up', o.toFixed(2), '→', DPR.toFixed(2), `median ${med.toFixed(1)}ms`); } }
   else adGood = 0;
 }
 let last = performance.now();
@@ -1954,6 +2088,7 @@ function resize() {
   const sc = h * DPR / (2 * Math.tan(camera.fov * Math.PI / 360)); for (const m of pMats) m.uniforms.uScale.value = sc;
 }
 addEventListener('resize', resize);
+for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => requestAnimationFrame(resize));
 
 // boot: wait briefly for the display fonts so the banners and signs draw with them
 await Promise.race([document.fonts.load('italic 40px Audiowide').then(() => document.fonts.load('700 30px "Chakra Petch"')), new Promise(r => setTimeout(r, 1500))]).catch(() => {});

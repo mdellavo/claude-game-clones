@@ -3,6 +3,127 @@
 <title>Hack the Planet</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik+Glitch&family=Share+Tech+Mono&display=swap">
+<!-- devkit: fullscreen, FPS counter, debug log. Shared across the games in this repo; keep copies identical
+     apart from the config line. Keys: ` (Backquote) FPS counter · Shift+` debug log · F fullscreen (if the game
+     does not use F). The ⋯ button (all devices) opens the same three toggles. -->
+<style>
+#dk-btn{position:fixed;z-index:2147483000;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));width:30px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;font:700 16px/1 system-ui,sans-serif;cursor:pointer;opacity:.55;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#dk-btn:hover,#dk-btn:focus-visible{opacity:1}
+#dk-menu{position:fixed;z-index:2147483001;top:calc(44px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:10px;background:rgba(10,12,20,.92);border:1px solid rgba(255,255,255,.2);font:600 13px/1.2 system-ui,sans-serif}
+#dk-menu button{all:unset;cursor:pointer;color:#fff;padding:8px 12px;border-radius:6px;white-space:nowrap}
+#dk-menu button:hover,#dk-menu button:focus-visible{background:rgba(255,255,255,.12)}
+#dk-menu button[aria-pressed=true]::after{content:" ✓";color:#7cf}
+#dk-fps{position:fixed;z-index:2147483000;left:calc(6px + env(safe-area-inset-left));bottom:calc(6px + env(safe-area-inset-bottom));padding:3px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:#7f7;font:600 11px/1.25 ui-monospace,Menlo,Consolas,monospace;white-space:pre;pointer-events:none}
+#dk-log{position:fixed;z-index:2147482999;left:calc(6px + env(safe-area-inset-left));right:calc(6px + env(safe-area-inset-right));bottom:calc(34px + env(safe-area-inset-bottom));max-height:38vh;display:flex;flex-direction:column;border-radius:6px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.18);font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;color:#ddd}
+#dk-log .dk-bar{display:flex;gap:6px;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.12);align-items:center}
+#dk-log .dk-bar span{flex:1;opacity:.7}
+#dk-log .dk-bar button{all:unset;cursor:pointer;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.12);color:#fff}
+#dk-lines{overflow-y:auto;padding:4px 6px;white-space:pre-wrap;word-break:break-word;overscroll-behavior:contain}
+#dk-lines .w{color:#fd6}#dk-lines .e{color:#f77}#dk-lines .g{color:#8cf}
+</style>
+<script>
+(() => {
+  // config: game name for the log header, and whether F is free for fullscreen
+  const DK = { game: 'Hack the Planet', fKey: true };
+  const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+  const el = (tag, id, html) => { const e = document.createElement(tag); if (id) e.id = id; if (html != null) e.innerHTML = html; return e; };
+  const t0 = performance.now(), lines = [], MAX = 400;
+  let logEl = null, linesEl = null, fpsEl = null, menuEl = null, btnEl = null;
+
+  // ---- log capture: console.*, uncaught errors, rejected promises, plus game events via DBG.log ----
+  const fmt = a => a.map(x => { if (x instanceof Error) return x.stack || x.message; if (typeof x === 'object' && x !== null) { try { return JSON.stringify(x); } catch { return String(x); } } return String(x); }).join(' ');
+  function push(level, args) {
+    const s = ((performance.now() - t0) / 1000).toFixed(2).padStart(7) + ' ' + fmt(args);
+    lines.push([level, s]); if (lines.length > MAX) lines.shift();
+    if (linesEl) { const d = document.createElement('div'); d.className = level; d.textContent = s; linesEl.appendChild(d); while (linesEl.childNodes.length > MAX) linesEl.firstChild.remove(); const atEnd = linesEl.scrollHeight - linesEl.scrollTop - linesEl.clientHeight < 40; if (atEnd) linesEl.scrollTop = linesEl.scrollHeight; }
+  }
+  for (const [m, lv] of [['log', ''], ['info', ''], ['debug', ''], ['warn', 'w'], ['error', 'e']]) { const o = console[m].bind(console); console[m] = (...a) => { push(lv, a); o(...a); }; }
+  addEventListener('error', e => push('e', [e.message + (e.filename ? ` (${e.filename.split('/').pop()}:${e.lineno})` : '')]));
+  addEventListener('unhandledrejection', e => push('e', ['unhandled rejection:', e.reason]));
+
+  // ---- FPS counter: its own rAF loop, so it measures what the display actually shows ----
+  let fpsOn = false, frames = 0, acc = 0, worst = 0, last = 0, raf = 0;
+  function fpsLoop(t) {
+    raf = requestAnimationFrame(fpsLoop);
+    if (last) { const d = t - last; frames++; acc += d; worst = Math.max(worst, d); }
+    last = t;
+    if (acc >= 500) { fpsEl.textContent = `${Math.round(frames * 1000 / acc)} fps  ${(acc / frames).toFixed(1)} ms  max ${worst.toFixed(0)}`; frames = 0; acc = 0; worst = 0; }
+  }
+  function setFps(on) {
+    fpsOn = on; store.set('devkit.fps', on);
+    if (on && !fpsEl) { fpsEl = el('div', 'dk-fps', '-- fps'); document.body.appendChild(fpsEl); last = 0; frames = acc = worst = 0; raf = requestAnimationFrame(fpsLoop); }
+    if (!on && fpsEl) { cancelAnimationFrame(raf); fpsEl.remove(); fpsEl = null; }
+    syncMenu();
+  }
+  function setLog(on) {
+    store.set('devkit.log', on);
+    if (on && !logEl) {
+      logEl = el('div', 'dk-log', `<div class="dk-bar"><span>${DK.game} · debug log</span><button type="button" data-a="copy">copy</button><button type="button" data-a="clear">clear</button><button type="button" data-a="close">×</button></div><div id="dk-lines"></div>`);
+      linesEl = logEl.querySelector('#dk-lines');
+      for (const [lv, s] of lines) { const d = document.createElement('div'); d.className = lv; d.textContent = s; linesEl.appendChild(d); }
+      logEl.addEventListener('click', e => { const a = e.target.dataset && e.target.dataset.a; if (a === 'clear') { lines.length = 0; linesEl.textContent = ''; } if (a === 'copy') navigator.clipboard && navigator.clipboard.writeText(lines.map(l => l[1]).join('\n')).catch(() => {}); if (a === 'close') setLog(false); });
+      // keep taps and keys on the panel from reaching the game
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown', 'wheel']) logEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(logEl); linesEl.scrollTop = linesEl.scrollHeight;
+    }
+    if (!on && logEl) { logEl.remove(); logEl = linesEl = null; }
+    syncMenu();
+  }
+
+  // ---- fullscreen ----
+  const fsEnabled = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function toggleFs() {
+    try {
+      if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      const r = document.documentElement; const p = (r.requestFullscreen || r.webkitRequestFullscreen).call(r, { navigationUI: 'hide' });
+      if (p && p.catch) p.catch(err => push('w', ['fullscreen refused:', err && err.message]));
+    } catch (err) { push('w', ['fullscreen failed:', err && err.message]); }
+  }
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { push('g', [fsElement() ? 'entered fullscreen' : 'left fullscreen']); syncMenu(); });
+
+  // ---- menu ----
+  function syncMenu() {
+    if (!menuEl) return;
+    const b = menuEl.querySelectorAll('button');
+    b[0].setAttribute('aria-pressed', !!fsElement()); b[0].hidden = !fsEnabled();
+    b[1].setAttribute('aria-pressed', fpsOn); b[2].setAttribute('aria-pressed', !!logEl);
+  }
+  function toggleMenu(force) {
+    const open = force ?? !menuEl;
+    if (open && !menuEl) {
+      menuEl = el('div', 'dk-menu', '<button type="button">Fullscreen</button><button type="button">FPS counter</button><button type="button">Debug log</button>');
+      const [a, b, c] = menuEl.querySelectorAll('button');
+      a.onclick = () => { toggleFs(); toggleMenu(false); }; b.onclick = () => setFps(!fpsOn); c.onclick = () => setLog(!logEl);
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown']) menuEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(menuEl); syncMenu();
+    } else if (!open && menuEl) { menuEl.remove(); menuEl = null; }
+  }
+
+  // ---- keys: capture phase so they work whatever the game does with keydown; never while typing ----
+  addEventListener('keydown', e => {
+    const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (e.code === 'Backquote' && !e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); if (e.shiftKey) setLog(!logEl); else setFps(!fpsOn); }
+    else if (DK.fKey && e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && fsEnabled()) { e.preventDefault(); e.stopImmediatePropagation(); toggleFs(); }
+  }, true);
+  addEventListener('pointerdown', e => { if (menuEl && !menuEl.contains(e.target) && e.target !== btnEl) toggleMenu(false); }, true);
+
+  function mount() {
+    btnEl = el('button', 'dk-btn', '⋯'); btnEl.type = 'button'; btnEl.title = 'Fullscreen · FPS · debug log';
+    btnEl.setAttribute('aria-label', 'Display and debug options');
+    btnEl.addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
+    for (const ev of ['pointerdown', 'touchstart', 'mousedown']) btnEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+    document.body.appendChild(btnEl);
+    if (store.get('devkit.fps', false)) setFps(true);
+    if (store.get('devkit.log', false)) setLog(true);
+    push('g', [`${DK.game} loaded · ${innerWidth}×${innerHeight} @${devicePixelRatio}x · ${navigator.userAgent}`]);
+  }
+  if (document.body) mount(); else addEventListener('DOMContentLoaded', mount);
+
+  // game-facing API: DBG.log('event', data) for notable game events; DBG.warn / DBG.error likewise
+  window.DBG = { log: (...a) => push('g', a), warn: (...a) => push('w', a), error: (...a) => push('e', a), fps: setFps, logPanel: setLog, fullscreen: toggleFs, mountPoint: () => btnEl };
+})();
+</script>
 <style>
 [hidden]{display:none!important}
 :root{--grn:#39ff7a;--cy:#22e6ff;--mag:#ff2bd6;--yel:#ffe14d;--red:#ff3a3a;--panel:rgba(4,10,8,.78);--line:rgba(57,255,122,.4)}
@@ -128,6 +249,15 @@ body.touch #swap{bottom:calc(210px + env(safe-area-inset-bottom,0px))}
 #lbViewList li{display:grid;grid-template-columns:2.2em 1fr auto;gap:10px}
 #lbViewList li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:pre}
 #lbViewClose{align-self:flex-start;margin:0}
+/* devkit placement: the minimap owns the top-right corner, so the ⋯ button sits left of it (below it on phones),
+   and on desktop the FPS readout moves bottom-right, clear of the speed panel */
+#dk-btn{top:calc(10px + env(safe-area-inset-top));right:calc(200px + env(safe-area-inset-right))}
+#dk-menu{top:calc(46px + env(safe-area-inset-top));right:calc(200px + env(safe-area-inset-right))}
+body:not(.touch) #dk-fps{left:auto;right:calc(6px + env(safe-area-inset-right))}
+@media (max-width:640px){
+  #dk-btn{top:calc(138px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right))}
+  #dk-menu{top:calc(174px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right))}
+}
 </style>
 
 <canvas id="c"></canvas>
@@ -227,8 +357,10 @@ async function lbFetch(entry) {
       body: JSON.stringify({ game: LB_GAME, ...entry }),
       signal: ctl.signal,
     } : { signal: ctl.signal });
+    if (!res.ok) DBG.warn('leaderboard', entry ? 'POST' : 'GET', 'HTTP', res.status);
     return res.ok ? await res.json() : null;
-  } catch {
+  } catch (err) {
+    DBG.warn('leaderboard', entry ? 'POST' : 'GET', 'failed:', err && err.message);
     return null;
   } finally {
     clearTimeout(timer);
@@ -301,7 +433,7 @@ const pLight = new THREE.PointLight(0xffd8a0, 14, 18, 1.4); scene.add(pLight);
 // the Gibson lives in its own scene
 const gScene = new THREE.Scene(); gScene.background = new THREE.Color(0x000300); gScene.fog = new THREE.Fog(0x000300, 20, 220);
 const gCam = new THREE.PerspectiveCamera(70, 1, .1, 600); gScene.add(gCam);
-function makeComposer(sc, cam) { try { const c = new EffectComposer(renderer); c.addPass(new RenderPass(sc, cam)); const b = new UnrealBloomPass(new THREE.Vector2(256, 256), .7, .5, .78); c.addPass(b); c.addPass(new OutputPass()); c.bloom = b; return c; } catch (e) { return null; } }
+function makeComposer(sc, cam) { try { const c = new EffectComposer(renderer); c.addPass(new RenderPass(sc, cam)); const b = new UnrealBloomPass(new THREE.Vector2(256, 256), .7, .5, .78); c.addPass(b); c.addPass(new OutputPass()); c.bloom = b; return c; } catch (e) { DBG.error('bloom composer failed, plain render:', e); return null; } }
 const composer = makeComposer(scene, camera), gComposer = makeComposer(gScene, gCam);
 
 /* ================= HELPERS ================= */
@@ -343,7 +475,7 @@ const AU = { ctx: null, muted: store.get('htp-mute', false) };
 function audioInit() {
   if (AU.ctx) { if (AU.ctx.state === 'suspended') AU.ctx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-  const c = AU.ctx = new AC();
+  const c = AU.ctx = new AC(); DBG.log('audio init', c.state, c.sampleRate + 'Hz');
   AU.master = c.createGain(); AU.master.gain.value = AU.muted ? 0 : .7; AU.master.connect(c.destination);
   AU.music = c.createGain(); AU.music.gain.value = .32; AU.music.connect(AU.master);
   const nb = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; AU.noise = nb;
@@ -906,10 +1038,12 @@ function updateDisks(dt) {
     const n = player.carried.length; player.carried = []; delivered = disks.filter(d => d.state === 'delivered').length;
     sfx('deliver'); toast(`${delivered}/6 COMBINED`, pick(LINES.deliver), 2);
     log(`${n} disk${n > 1 ? 's' : ''} combined at Cyberdelia.`, 'g');
+    DBG.log('disks delivered', n, 'total', delivered + '/6');
     if (delivered >= 6) startFinal();
   }
 }
 function startFinal() {
+  DBG.log('final phase: run to the Gibson', 't=' + gameT.toFixed(1));
   finalPhase = true; toast('WORM KILLER READY', 'Get to the Gibson at Ellingson Mineral. Everyone is coming.', 3);
   log('PHREAK: Every agent in the city is on us. Skate!', 'q'); summonPlague(); if (plague) plague.cool = 0;
   for (let k = 0; k < 8; k++) spawnAgentFar(70);
@@ -917,6 +1051,7 @@ function startFinal() {
 }
 function bust(by) {
   if (state !== 'play') return;
+  DBG.log('busted', crew().name, 'by', by, 'busts', busts + 1, 'dropped', player.carried.length);
   state = 'busted'; busts++; arrested[crewIdx] = true; sfx('bust'); shake = 1;
   const dropped = player.carried.splice(0);
   dropped.forEach((d, k) => { d.state = 'world'; d.x = player.x + Math.cos(k * 2) * 2; d.z = player.z + Math.sin(k * 2) * 2; const s = randomWalkSpot(d, 3); d.x = s.x; d.z = s.z; d.g.position.set(d.x, 0, d.z); d.g.visible = true; d.name = 'WHERE YOU GOT BUSTED'; });
@@ -927,6 +1062,7 @@ let bustT = 0;
 function afterBust() {
   const free = CREW.map((c, i) => i).filter(i => !arrested[i]);
   if (!free.length) { gameOver(); return; }
+  DBG.log('next skater', CREW[free[0]].name, 'crew left', free.length);
   setSkater(free[0]); Object.assign(player, { x: HIDEOUT.x, z: HIDEOUT.z, y: 0, vy: 0, v: 0, heading: 0, down: 0, grind: null, onKicker: null, stam: 1, ghost: 2 });
   for (const a of agents) if (Math.hypot(a.x - HIDEOUT.x, a.z - HIDEOUT.z) < 40) { const s = randomWalkSpot({ x: a.x + 60, z: a.z }, 30); a.x = s.x; a.z = s.z; }
   for (const a of agents) if (a.state === 'chase') { a.state = 'patrol'; a.target = null; }
@@ -969,7 +1105,7 @@ function buildGibson() {
   gib.gates.forEach(g => gScene.remove(g.m)); gib.viruses.forEach(v => gScene.remove(v.m)); gib.gates = []; gib.viruses = [];
 }
 function startGibson() {
-  state = 'gibson'; MUS.gib = true; buildGibson();
+  DBG.log('state gibson (upload stage)'); state = 'gibson'; MUS.gib = true; buildGibson();
   Object.assign(gib, { t: 0, pct: 0, x: 0, y: 7, vx: 0, vy: 0, z: 0, speed: 32, timeLeft: 75, hits: 0, nextGate: 40, nextVirus: 2 });
   $('hud').hidden = true; $('gib').hidden = false; $('touch').hidden = !isTouch; $('tJump').hidden = true; $('tAbil').hidden = true; $('tRun').hidden = true;
   toast('INSIDE THE GIBSON', 'Steer through the green gates. Dodge the Plague\'s red virus.', 2.6);
@@ -1083,14 +1219,14 @@ function newGame(startIdx) {
   setupAgents();
   for (const id of ['title', 'end', 'pause']) $(id).hidden = true; $('gib').hidden = true;
   $('hud').hidden = false; $('touch').hidden = !isTouch; for (const id of ['tJump', 'tAbil', 'tRun']) $(id).hidden = false;
-  state = 'play'; MUS.on = true; MUS.gib = false;
+  state = 'play'; MUS.on = true; MUS.gib = false; DBG.log('new game', CREW[startIdx].name);
   toast('JACKED IN', 'Six disks are out there. Follow the green beams.', 2.6);
   log('CEREAL KILLER: The Plague framed us. Grab the garbage file disks.', 'q'); log('Cyberdelia is the drop point. Stay off the agents.', 'g');
 }
 let cityBuilt = false;
 function buildCityOnce() { if (!cityBuilt) { buildCity(); cityBuilt = true; } }
 function gameOver() {
-  clearToast(); state = 'over'; MUS.on = false; $('hud').hidden = true; $('touch').hidden = true;
+  DBG.log('game over: crew all busted', 't=' + gameT.toFixed(1)); clearToast(); state = 'over'; MUS.on = false; $('hud').hidden = true; $('touch').hidden = true;
   $('endEye').textContent = 'ELLINGSON MINERAL · THE PLAGUE WINS'; $('endTitle').textContent = 'SYSTEM FAILURE';
   $('endText').textContent = 'The whole crew got picked up. The Da Vinci virus capsizes the tankers and the Plague walks with the money.';
   endStats(); lbShow(false); $('retryGib').hidden = true; $('end').hidden = false; setTimeout(() => $('againBtn').focus({ preventScroll: true }), 50);
@@ -1116,7 +1252,8 @@ function lbShow(won) {
   $('lbList').replaceChildren(); $('lbNote').textContent = 'LOADING FASTEST HACKS…'; $('lb').hidden = false;
   lbFetch().then(d => {
     if (run !== lbRun || lbSent) return;
-    if (!d || !Array.isArray(d.scores)) { $('lbNote').textContent = 'LEADERBOARD OFFLINE'; return; }
+    if (!d || !Array.isArray(d.scores)) { DBG.warn('leaderboard offline'); $('lbNote').textContent = 'LEADERBOARD OFFLINE'; return; }
+    DBG.log('leaderboard loaded', d.scores.length, 'scores');
     $('lbNote').textContent = d.scores.length ? 'FASTEST HACKS' : 'NO TIMES ON THE BOARD YET'; lbRender(d.scores);
   });
 }
@@ -1127,7 +1264,8 @@ $('lbForm').addEventListener('submit', async e => {
   store.set('htp-name', name); $('lbSend').disabled = true; $('lbNote').textContent = 'UPLOADING…';
   const d = await lbFetch({ name, score: lbScore });
   if (run !== lbRun) return;
-  if (!d || !Array.isArray(d.scores)) { lbSent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'LEADERBOARD OFFLINE · TIME NOT SENT'; return; }
+  if (!d || !Array.isArray(d.scores)) { DBG.warn('score submit failed', name, lbScore); lbSent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'LEADERBOARD OFFLINE · TIME NOT SENT'; return; }
+  DBG.log('score submitted', name, lbScore + 'ms', 'rank', d.rank);
   $('lbForm').hidden = true; $('lbNote').textContent = d.rank ? `YOUR TIME ${lbTime(lbScore)} · RANK #${d.rank}` : `YOUR TIME ${lbTime(lbScore)} DID NOT MAKE THE BOARD`;
   lbRender(d.scores, d.rank);
 });
@@ -1135,7 +1273,7 @@ $('lbForm').addEventListener('submit', async e => {
 for (const ev of ['keydown', 'keyup']) $('lbName').addEventListener(ev, e => e.stopPropagation());
 function clearToast() { msgT = 0; $('tBig').textContent = ''; $('tSm').textContent = ''; }
 function winGame() {
-  clearToast(); state = 'won'; MUS.gib = false; sfx('win'); $('gib').hidden = true; $('touch').hidden = true;
+  DBG.log('won', 't=' + gameT.toFixed(1), 'gibson hits', gib.hits); clearToast(); state = 'won'; MUS.gib = false; sfx('win'); $('gib').hidden = true; $('touch').hidden = true;
   $('endEye').textContent = 'ELLINGSON MINERAL · GIBSON · ROOT ACCESS'; $('endTitle').textContent = 'HACK THE PLANET!';
   const free = CREW.filter((c, i) => !arrested[i]).map(c => c.name);
   $('endText').textContent = `The worm is dead, the garbage file is on every screen, and the Plague is in cuffs. ${free.length === 6 ? 'The whole crew skated away clean.' : 'Charges against ' + CREW.filter((c, i) => arrested[i]).map(c => c.name).join(', ') + ' get dropped by morning.'}`;
@@ -1144,16 +1282,16 @@ function winGame() {
   setTimeout(() => $('againBtn').focus({ preventScroll: true }), 50);
 }
 function gibsonFail() {
-  clearToast(); state = 'over'; MUS.on = false; $('gib').hidden = true; $('touch').hidden = true;
+  DBG.log('gibson failed (traced)', 'pct', Math.round(gib.pct), 'hits', gib.hits); clearToast(); state = 'over'; MUS.on = false; $('gib').hidden = true; $('touch').hidden = true;
   $('endEye').textContent = 'GIBSON · CONNECTION TRACED'; $('endTitle').textContent = 'TRACED';
   $('endText').textContent = 'The Plague traced the connection before the worm killer finished uploading. You still have the disks. Jack back in.';
   endStats(); lbShow(false); $('retryGib').hidden = false; $('end').hidden = false; setTimeout(() => $('retryGib').focus({ preventScroll: true }), 50);
 }
-function togglePause() { if (state === 'play' || state === 'gibson') { pausedFrom = state; state = 'paused'; $('pause').hidden = false; MUS.on = false; rollAudio(0, false, false); } else if (state === 'paused') { state = pausedFrom; $('pause').hidden = true; MUS.on = true; } }
+function togglePause() { if (state === 'play' || state === 'gibson') { DBG.log('paused from', state); pausedFrom = state; state = 'paused'; $('pause').hidden = false; MUS.on = false; rollAudio(0, false, false); } else if (state === 'paused') { DBG.log('resumed', pausedFrom); state = pausedFrom; $('pause').hidden = true; MUS.on = true; } }
 let pausedFrom = 'play', selectedCrew = store.get('htp-crew', 0);
 function renderCrewPick() { const el = $('crewPick'); el.innerHTML = CREW.map((c, i) => `<button type="button" data-i="${i}" class="${i === selectedCrew ? 'sel' : ''}" style="border-left:4px solid ${hex(c.accent)}"><b>${c.name}</b><i>${c.tag}</i><u>${c.ability}: ${c.desc}</u></button>`).join(''); el.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { selectedCrew = +b.dataset.i; store.set('htp-crew', selectedCrew); renderCrewPick(); })); }
 $('startBtn').addEventListener('click', () => newGame(selectedCrew));
-$('againBtn').addEventListener('click', () => { $('end').hidden = true; state = 'title'; $('title').hidden = false; renderCrewPick(); });
+$('againBtn').addEventListener('click', () => { DBG.log('state title'); $('end').hidden = true; state = 'title'; $('title').hidden = false; renderCrewPick(); });
 $('retryGib').addEventListener('click', () => { $('end').hidden = true; MUS.on = true; startGibson(); });
 $('resumeBtn').addEventListener('click', togglePause);
 if (isTouch) { $('keysDesk').hidden = true; $('keysTouch').hidden = false; }

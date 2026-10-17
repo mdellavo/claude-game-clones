@@ -110,6 +110,133 @@ body.touch #prompt{bottom:calc(214px + env(safe-area-inset-bottom,0px));font-siz
 #lbViewList li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:pre}
 #lbViewClose{align-self:flex-start;margin:0}
 </style>
+<!-- devkit: fullscreen, FPS counter, debug log. Shared across the games in this repo; keep copies identical
+     apart from the config line. Keys: ` (Backquote) FPS counter · Shift+` debug log · F fullscreen (if the game
+     does not use F). The ⋯ button (all devices) opens the same three toggles. -->
+<style>
+#dk-btn{position:fixed;z-index:2147483000;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));width:30px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;font:700 16px/1 system-ui,sans-serif;cursor:pointer;opacity:.55;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#dk-btn:hover,#dk-btn:focus-visible{opacity:1}
+#dk-menu{position:fixed;z-index:2147483001;top:calc(44px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:10px;background:rgba(10,12,20,.92);border:1px solid rgba(255,255,255,.2);font:600 13px/1.2 system-ui,sans-serif}
+#dk-menu button{all:unset;cursor:pointer;color:#fff;padding:8px 12px;border-radius:6px;white-space:nowrap}
+#dk-menu button:hover,#dk-menu button:focus-visible{background:rgba(255,255,255,.12)}
+#dk-menu button[aria-pressed=true]::after{content:" ✓";color:#7cf}
+#dk-fps{position:fixed;z-index:2147483000;left:calc(6px + env(safe-area-inset-left));bottom:calc(6px + env(safe-area-inset-bottom));padding:3px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:#7f7;font:600 11px/1.25 ui-monospace,Menlo,Consolas,monospace;white-space:pre;pointer-events:none}
+#dk-log{position:fixed;z-index:2147482999;left:calc(6px + env(safe-area-inset-left));right:calc(6px + env(safe-area-inset-right));bottom:calc(34px + env(safe-area-inset-bottom));max-height:38vh;display:flex;flex-direction:column;border-radius:6px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.18);font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;color:#ddd}
+#dk-log .dk-bar{display:flex;gap:6px;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.12);align-items:center}
+#dk-log .dk-bar span{flex:1;opacity:.7}
+#dk-log .dk-bar button{all:unset;cursor:pointer;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.12);color:#fff}
+#dk-lines{overflow-y:auto;padding:4px 6px;white-space:pre-wrap;word-break:break-word;overscroll-behavior:contain}
+#dk-lines .w{color:#fd6}#dk-lines .e{color:#f77}#dk-lines .g{color:#8cf}
+</style>
+<script>
+(() => {
+  // config: game name for the log header, and whether F is free for fullscreen
+  const DK = { game: 'Neon Skitch', fKey: false };
+  const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+  const el = (tag, id, html) => { const e = document.createElement(tag); if (id) e.id = id; if (html != null) e.innerHTML = html; return e; };
+  const t0 = performance.now(), lines = [], MAX = 400;
+  let logEl = null, linesEl = null, fpsEl = null, menuEl = null, btnEl = null;
+
+  // ---- log capture: console.*, uncaught errors, rejected promises, plus game events via DBG.log ----
+  const fmt = a => a.map(x => { if (x instanceof Error) return x.stack || x.message; if (typeof x === 'object' && x !== null) { try { return JSON.stringify(x); } catch { return String(x); } } return String(x); }).join(' ');
+  function push(level, args) {
+    const s = ((performance.now() - t0) / 1000).toFixed(2).padStart(7) + ' ' + fmt(args);
+    lines.push([level, s]); if (lines.length > MAX) lines.shift();
+    if (linesEl) { const d = document.createElement('div'); d.className = level; d.textContent = s; linesEl.appendChild(d); while (linesEl.childNodes.length > MAX) linesEl.firstChild.remove(); const atEnd = linesEl.scrollHeight - linesEl.scrollTop - linesEl.clientHeight < 40; if (atEnd) linesEl.scrollTop = linesEl.scrollHeight; }
+  }
+  for (const [m, lv] of [['log', ''], ['info', ''], ['debug', ''], ['warn', 'w'], ['error', 'e']]) { const o = console[m].bind(console); console[m] = (...a) => { push(lv, a); o(...a); }; }
+  addEventListener('error', e => push('e', [e.message + (e.filename ? ` (${e.filename.split('/').pop()}:${e.lineno})` : '')]));
+  addEventListener('unhandledrejection', e => push('e', ['unhandled rejection:', e.reason]));
+
+  // ---- FPS counter: its own rAF loop, so it measures what the display actually shows ----
+  let fpsOn = false, frames = 0, acc = 0, worst = 0, last = 0, raf = 0;
+  function fpsLoop(t) {
+    raf = requestAnimationFrame(fpsLoop);
+    if (last) { const d = t - last; frames++; acc += d; worst = Math.max(worst, d); }
+    last = t;
+    if (acc >= 500) { fpsEl.textContent = `${Math.round(frames * 1000 / acc)} fps  ${(acc / frames).toFixed(1)} ms  max ${worst.toFixed(0)}`; frames = 0; acc = 0; worst = 0; }
+  }
+  function setFps(on) {
+    fpsOn = on; store.set('devkit.fps', on);
+    if (on && !fpsEl) { fpsEl = el('div', 'dk-fps', '-- fps'); document.body.appendChild(fpsEl); last = 0; frames = acc = worst = 0; raf = requestAnimationFrame(fpsLoop); }
+    if (!on && fpsEl) { cancelAnimationFrame(raf); fpsEl.remove(); fpsEl = null; }
+    syncMenu();
+  }
+  function setLog(on) {
+    store.set('devkit.log', on);
+    if (on && !logEl) {
+      logEl = el('div', 'dk-log', `<div class="dk-bar"><span>${DK.game} · debug log</span><button type="button" data-a="copy">copy</button><button type="button" data-a="clear">clear</button><button type="button" data-a="close">×</button></div><div id="dk-lines"></div>`);
+      linesEl = logEl.querySelector('#dk-lines');
+      for (const [lv, s] of lines) { const d = document.createElement('div'); d.className = lv; d.textContent = s; linesEl.appendChild(d); }
+      logEl.addEventListener('click', e => { const a = e.target.dataset && e.target.dataset.a; if (a === 'clear') { lines.length = 0; linesEl.textContent = ''; } if (a === 'copy') navigator.clipboard && navigator.clipboard.writeText(lines.map(l => l[1]).join('\n')).catch(() => {}); if (a === 'close') setLog(false); });
+      // keep taps and keys on the panel from reaching the game
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown', 'wheel']) logEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(logEl); linesEl.scrollTop = linesEl.scrollHeight;
+    }
+    if (!on && logEl) { logEl.remove(); logEl = linesEl = null; }
+    syncMenu();
+  }
+
+  // ---- fullscreen ----
+  const fsEnabled = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function toggleFs() {
+    try {
+      if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      const r = document.documentElement; const p = (r.requestFullscreen || r.webkitRequestFullscreen).call(r, { navigationUI: 'hide' });
+      if (p && p.catch) p.catch(err => push('w', ['fullscreen refused:', err && err.message]));
+    } catch (err) { push('w', ['fullscreen failed:', err && err.message]); }
+  }
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { push('g', [fsElement() ? 'entered fullscreen' : 'left fullscreen']); syncMenu(); });
+
+  // ---- menu ----
+  function syncMenu() {
+    if (!menuEl) return;
+    const b = menuEl.querySelectorAll('button');
+    b[0].setAttribute('aria-pressed', !!fsElement()); b[0].hidden = !fsEnabled();
+    b[1].setAttribute('aria-pressed', fpsOn); b[2].setAttribute('aria-pressed', !!logEl);
+  }
+  function toggleMenu(force) {
+    const open = force ?? !menuEl;
+    if (open && !menuEl) {
+      menuEl = el('div', 'dk-menu', '<button type="button">Fullscreen</button><button type="button">FPS counter</button><button type="button">Debug log</button>');
+      const [a, b, c] = menuEl.querySelectorAll('button');
+      a.onclick = () => { toggleFs(); toggleMenu(false); }; b.onclick = () => setFps(!fpsOn); c.onclick = () => setLog(!logEl);
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown']) menuEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(menuEl); syncMenu();
+    } else if (!open && menuEl) { menuEl.remove(); menuEl = null; }
+  }
+
+  // ---- keys: capture phase so they work whatever the game does with keydown; never while typing ----
+  addEventListener('keydown', e => {
+    const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (e.code === 'Backquote' && !e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); if (e.shiftKey) setLog(!logEl); else setFps(!fpsOn); }
+    else if (DK.fKey && e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && fsEnabled()) { e.preventDefault(); e.stopImmediatePropagation(); toggleFs(); }
+  }, true);
+  addEventListener('pointerdown', e => { if (menuEl && !menuEl.contains(e.target) && e.target !== btnEl) toggleMenu(false); }, true);
+
+  function mount() {
+    btnEl = el('button', 'dk-btn', '⋯'); btnEl.type = 'button'; btnEl.title = 'Fullscreen · FPS · debug log';
+    btnEl.setAttribute('aria-label', 'Display and debug options');
+    btnEl.addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
+    for (const ev of ['pointerdown', 'touchstart', 'mousedown']) btnEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+    document.body.appendChild(btnEl);
+    if (store.get('devkit.fps', false)) setFps(true);
+    if (store.get('devkit.log', false)) setLog(true);
+    push('g', [`${DK.game} loaded · ${innerWidth}×${innerHeight} @${devicePixelRatio}x · ${navigator.userAgent}`]);
+  }
+  if (document.body) mount(); else addEventListener('DOMContentLoaded', mount);
+
+  // game-facing API: DBG.log('event', data) for notable game events; DBG.warn / DBG.error likewise
+  window.DBG = { log: (...a) => push('g', a), warn: (...a) => push('w', a), error: (...a) => push('e', a), fps: setFps, logPanel: setLog, fullscreen: toggleFs, mountPoint: () => btnEl };
+})();
+</script>
+<style>
+/* devkit placement: top-right holds the race clock, so the button sits top-centre under the progress bar */
+#dk-btn{top:calc(46px + env(safe-area-inset-top));left:50%;right:auto;transform:translateX(-50%)}
+#dk-menu{top:calc(82px + env(safe-area-inset-top));left:50%;right:auto;transform:translateX(-50%)}
+#dk-fps{top:calc(4px + env(safe-area-inset-top));bottom:auto;left:50%;transform:translateX(-50%)}
+</style>
 
 <canvas id="c"></canvas>
 <div id="flash"></div><div id="emp"></div>
@@ -218,8 +345,10 @@ async function lbFetch(entry) {
       body: JSON.stringify({ game: LB_GAME, ...entry }),
       signal: ctl.signal,
     } : { signal: ctl.signal });
+    if (!res.ok) DBG.warn('leaderboard ' + (entry ? 'submit' : 'fetch') + ' failed: HTTP ' + res.status);
     return res.ok ? await res.json() : null;
-  } catch {
+  } catch (err) {
+    DBG.warn('leaderboard ' + (entry ? 'submit' : 'fetch') + ' failed:', err && err.message);
     return null;
   } finally {
     clearTimeout(timer);
@@ -297,7 +426,7 @@ try {
   bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), isTouch ? .55 : .62, .45, .82);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
-} catch (e) { composer = null; }
+} catch (e) { composer = null; DBG.error('bloom composer failed, rendering without it:', e); }
 
 /* ================= SHARED GEOMETRY / MATERIAL ================= */
 function vcBox(w, h, d, x, y, z, color, k = 1) {
@@ -363,6 +492,7 @@ function audioInit() {
   AU.rg = c.createGain(); AU.rg.gain.value = 0; const rf = c.createBiquadFilter(); rf.type = 'highpass'; rf.frequency.value = 3000; rf.connect(AU.rg); AU.rg.connect(AU.master);
   const rs = c.createBufferSource(); rs.buffer = nb; rs.loop = true; rs.playbackRate.value = .7; rs.connect(rf); rs.start();
   startMusic();
+  DBG.log('audio init', c.state, c.sampleRate + 'Hz');
 }
 function setMuted(m) { AU.muted = m; store.set('ns-mute', m); if (AU.master) AU.master.gain.value = m ? 0 : .7; }
 function engineAudio(v, boosting, on) {
@@ -759,6 +889,7 @@ function wipeout(r, dmg, why) {
   const p = trackPos(r.s, r.lat, .6); sparks(p.x, p.y, p.z, 30, 0xffa040, 9);
   if (r.isPlayer) {
     shake = 1; sfx('crash'); $('flash').style.opacity = .8; r.crashes = (r.crashes || 0) + 1;
+    DBG.log('player wipeout', why, 'hp ' + Math.max(0, Math.round(r.hp)), 'crashes ' + r.crashes);
     if (r.hp <= 0) { r.hp = 0; wrecked(); return; }
     msg(why === 'ko' ? 'KNOCKED DOWN' : why === 'flung' ? 'SHAKEN OFF!' : 'WIPEOUT!', why === 'traffic' ? 'Watch the traffic' : why === 'barrier' ? 'Barrier ahead means barrier ahead' : '');
   } else if (Math.abs(r.s - player.s) < 80) sfx('crash', .4);
@@ -1029,9 +1160,10 @@ function startRace(i) {
   raceT = 0; countT = 3.6; state = 'intro'; MUS.on = true; lastBeep = 4;
   const p = trackPos(player.s - 7.4, player.lat * .8, 2.7); camPos.set(p.x, p.y, p.z);
   msg(cfg.name.toUpperCase(), cfg.sub, 2);
+  DBG.log('race start', i + 1, cfg.name, 'len ' + cfg.len, isTouch ? 'touch' : 'keyboard');
 }
 let lastBeep = 4;
-function wrecked() { if (state !== 'race') return; state = 'wrecked'; endT = 2.5; msg('RIDER DOWN', 'Your rider is done for this race', 2.5); MUS.on = false; }
+function wrecked() { if (state !== 'race') return; state = 'wrecked'; DBG.log('player wrecked at', fmtT(raceT), Math.round(player.s) + 'm'); endT = 2.5; msg('RIDER DOWN', 'Your rider is done for this race', 2.5); MUS.on = false; }
 function finishRace() {
   const wreck = state === 'wrecked';
   for (const r of racers) if (!r.finished) r.estT = raceT + Math.max(0, cfg.len - r.s) / Math.max(25, r.cruise || 50);
@@ -1049,6 +1181,7 @@ function finishRace() {
   $('nextBtn').hidden = !podium || last; $('nextBtn').textContent = 'NEXT RACE';
   if (podium && last) $('resTitle').textContent = place === 1 ? 'CHAMPION!' : `${place}${ordinal(place)} · CUP DONE`;
   $('results').hidden = false; $('hud').hidden = true; $('touch').hidden = true; state = 'results'; MUS.on = false;
+  DBG.log('results', wreck ? 'DNF' : `place ${place}`, wreck ? '' : fmtT(player.finishT), 'KOs ' + player.ko, 'unlocked ' + unlocked);
   lbOpen(wreck ? null : Math.round(player.finishT * 1000));
   setTimeout(() => (podium && !last ? $('nextBtn') : $('retryBtn')).focus({ preventScroll: true }), 50);
 }
@@ -1067,7 +1200,7 @@ function lbOpen(score) {
   const run = ++lbRun; lbScore = score; lbSent = false;
   $('lb').hidden = false; $('lbForm').hidden = score == null; $('lbSend').disabled = false; $('lbName').value = String(store.get('ns-name', '')).slice(0, 12);
   $('lbNote').textContent = 'Loading the board…'; lbRender([]);
-  lbFetch().then(d => { if (run !== lbRun || lbSent) return; if (d) { lbRender(d.scores); $('lbNote').textContent = d.scores && d.scores.length ? '' : 'No times yet. Be the first.'; } else $('lbNote').textContent = 'Board offline.'; });
+  lbFetch().then(d => { DBG.log('leaderboard fetched', d && d.scores ? d.scores.length + ' scores' : 'offline'); if (run !== lbRun || lbSent) return; if (d) { lbRender(d.scores); $('lbNote').textContent = d.scores && d.scores.length ? '' : 'No times yet. Be the first.'; } else $('lbNote').textContent = 'Board offline.'; });
 }
 $('lbForm').addEventListener('submit', e => {
   e.preventDefault(); if (lbSent || lbScore == null) return;
@@ -1075,7 +1208,8 @@ $('lbForm').addEventListener('submit', e => {
   const run = lbRun; lbSent = true; $('lbSend').disabled = true; store.set('ns-name', name); $('lbNote').textContent = 'Sending…';
   lbFetch({ name, score: lbScore }).then(d => {
     if (run !== lbRun) return;
-    if (!d) { lbSent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'Board offline. Your time was not sent.'; return; }
+    if (!d) { DBG.warn('score not sent', lbScore); lbSent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'Board offline. Your time was not sent.'; return; }
+    DBG.log('score submitted', name, fmtT(lbScore / 1000), 'rank ' + d.rank);
     $('lbForm').hidden = true; lbRender(d.scores, d.rank);
     $('lbNote').textContent = d.rank ? `You are #${d.rank} on the board with ${fmtT(lbScore / 1000)}.` : `${fmtT(lbScore / 1000)} did not make the board.`;
   });
@@ -1083,10 +1217,10 @@ $('lbForm').addEventListener('submit', e => {
 // keep typing a name away from the game's window-level key handlers
 for (const ev of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(ev, e => e.stopPropagation());
 function togglePause() {
-  if (state === 'race' || state === 'intro') { state = 'paused:' + state; $('pause').hidden = false; MUS.on = false; engineAudio(0, false, false); }
-  else if (state.startsWith('paused:')) { state = state.slice(7); $('pause').hidden = true; MUS.on = true; }
+  if (state === 'race' || state === 'intro') { DBG.log('paused'); state = 'paused:' + state; $('pause').hidden = false; MUS.on = false; engineAudio(0, false, false); }
+  else if (state.startsWith('paused:')) { DBG.log('resumed'); state = state.slice(7); $('pause').hidden = true; MUS.on = true; }
 }
-function toTitle() { for (const id of ['results', 'pause']) $(id).hidden = true; $('hud').hidden = true; $('touch').hidden = true; state = 'title'; MUS.on = false; renderRaceButtons(); $('title').hidden = false; }
+function toTitle() { DBG.log('title screen'); for (const id of ['results', 'pause']) $(id).hidden = true; $('hud').hidden = true; $('touch').hidden = true; state = 'title'; MUS.on = false; renderRaceButtons(); $('title').hidden = false; }
 function renderRaceButtons() {
   const el = $('races'); el.innerHTML = '';
   RACES.forEach((rc, i) => { const b = document.createElement('button'); b.type = 'button'; b.disabled = i > unlocked; b.className = i === selected ? 'sel' : ''; b.innerHTML = `${i + 1} · ${rc.name.toUpperCase()}<small>${i > unlocked ? 'LOCKED · TOP 3 IN RACE ' + i : rc.sub + (best[i] ? ` · BEST ${best[i]}${ordinal(best[i])}` : '')}</small>`; b.addEventListener('click', () => { selected = i; renderRaceButtons(); }); el.appendChild(b); });
@@ -1106,7 +1240,7 @@ function step(dt) {
   if (state === 'intro') {
     countT -= dt; const n = Math.ceil(countT);
     if (n !== lastBeep && n <= 3 && n >= 1) { lastBeep = n; sfx('beep'); msg(String(n), '', .9); }
-    if (countT <= 0) { state = 'race'; sfx('go'); msg('GO!', 'Fight your way to the finish', 1); }
+    if (countT <= 0) { state = 'race'; sfx('go'); DBG.log('GO: race on'); msg('GO!', 'Fight your way to the finish', 1); }
     updateTraffic(dt * 0, player.s); updateParticles(dt); return;
   }
   if (state !== 'race' && state !== 'wrecked' && state !== 'done') { return; }
@@ -1117,7 +1251,7 @@ function step(dt) {
     updateRacer(r, c, dt); collide(r);
     if (!r.finished && r.s >= cfg.len) {
       r.finished = true; r.finishT = raceT; r.desLat = r.lat;
-      if (r.isPlayer) { state = 'done'; endT = 3.2; const place = standings().indexOf(player) + 1; sfx('finish'); msg(place === 1 ? 'YOU WIN!' : `${place}${ordinal(place)} PLACE`, fmtT(raceT), 3); input.bot = { steer: 0, brake: false, boost: false, grab: false, hit: false }; }
+      if (r.isPlayer) { state = 'done'; endT = 3.2; const place = standings().indexOf(player) + 1; DBG.log('player finished', `${place}${ordinal(place)}`, fmtT(raceT)); sfx('finish'); msg(place === 1 ? 'YOU WIN!' : `${place}${ordinal(place)} PLACE`, fmtT(raceT), 3); input.bot = { steer: 0, brake: false, boost: false, grab: false, hit: false }; }
     }
   }
   racerBumps();
@@ -1162,4 +1296,5 @@ T = buildTrack(cfg); buildWorld(cfg); setupTraffic(); setupRacers(); for (const 
 requestAnimationFrame(t => { last = t; frame(t); });
 window.__ns = { aiControl, get state() { return state; }, step, startRace, get player() { return player; }, get racers() { return racers; }, get traffic() { return traffic; }, input, keys, trackPos, get obstacles() { return obstacles; }, renderer, get cfg() { return cfg; }, LANES };
 window.__nsReady = true;
+DBG.log('boot done', 'renderer ' + (composer ? 'bloom' : 'plain'), 'DPR ' + DPR, isTouch ? 'touch' : 'desktop');
 </script>

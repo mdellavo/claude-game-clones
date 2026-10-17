@@ -289,8 +289,9 @@
   A.init = function () {
     if (A.ctx) { if (A.ctx.state === 'suspended') A.ctx.resume(); return; }
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
+    if (!Ctx) { DBG.warn('audio: Web Audio unavailable'); return; }
     A.ctx = new Ctx();
+    DBG.log('audio init', { sampleRate: A.ctx.sampleRate, state: A.ctx.state });
     A.master = A.ctx.createGain();
     A.master.gain.value = 0.5;
     A.master.connect(A.ctx.destination);

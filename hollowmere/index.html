@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Hollowmere</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -164,6 +165,135 @@ html,body{height:100%;margin:0;background:var(--void);color:var(--bone);overflow
 #lbViewList li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:pre}
 #lbViewClose{align-self:flex-start;margin:0}
 </style>
+<!-- devkit: fullscreen, FPS counter, debug log. Shared across the games in this repo; keep copies identical
+     apart from the config line. Keys: ` (Backquote) FPS counter · Shift+` debug log · F fullscreen (if the game
+     does not use F). The ⋯ button (all devices) opens the same three toggles. -->
+<style>
+#dk-btn{position:fixed;z-index:2147483000;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));width:30px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;font:700 16px/1 system-ui,sans-serif;cursor:pointer;opacity:.55;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#dk-btn:hover,#dk-btn:focus-visible{opacity:1}
+#dk-menu{position:fixed;z-index:2147483001;top:calc(44px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:10px;background:rgba(10,12,20,.92);border:1px solid rgba(255,255,255,.2);font:600 13px/1.2 system-ui,sans-serif}
+#dk-menu button{all:unset;cursor:pointer;color:#fff;padding:8px 12px;border-radius:6px;white-space:nowrap}
+#dk-menu button:hover,#dk-menu button:focus-visible{background:rgba(255,255,255,.12)}
+#dk-menu button[aria-pressed=true]::after{content:" ✓";color:#7cf}
+#dk-fps{position:fixed;z-index:2147483000;left:calc(6px + env(safe-area-inset-left));bottom:calc(6px + env(safe-area-inset-bottom));padding:3px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:#7f7;font:600 11px/1.25 ui-monospace,Menlo,Consolas,monospace;white-space:pre;pointer-events:none}
+#dk-log{position:fixed;z-index:2147482999;left:calc(6px + env(safe-area-inset-left));right:calc(6px + env(safe-area-inset-right));bottom:calc(34px + env(safe-area-inset-bottom));max-height:38vh;display:flex;flex-direction:column;border-radius:6px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.18);font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;color:#ddd}
+#dk-log .dk-bar{display:flex;gap:6px;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.12);align-items:center}
+#dk-log .dk-bar span{flex:1;opacity:.7}
+#dk-log .dk-bar button{all:unset;cursor:pointer;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.12);color:#fff}
+#dk-lines{overflow-y:auto;padding:4px 6px;white-space:pre-wrap;word-break:break-word;overscroll-behavior:contain}
+#dk-lines .w{color:#fd6}#dk-lines .e{color:#f77}#dk-lines .g{color:#8cf}
+</style>
+<script>
+(() => {
+  // config: game name for the log header, and whether F is free for fullscreen
+  const DK = { game: 'Hollowmere', fKey: true };
+  const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+  const el = (tag, id, html) => { const e = document.createElement(tag); if (id) e.id = id; if (html != null) e.innerHTML = html; return e; };
+  const t0 = performance.now(), lines = [], MAX = 400;
+  let logEl = null, linesEl = null, fpsEl = null, menuEl = null, btnEl = null;
+
+  // ---- log capture: console.*, uncaught errors, rejected promises, plus game events via DBG.log ----
+  const fmt = a => a.map(x => { if (x instanceof Error) return x.stack || x.message; if (typeof x === 'object' && x !== null) { try { return JSON.stringify(x); } catch { return String(x); } } return String(x); }).join(' ');
+  function push(level, args) {
+    const s = ((performance.now() - t0) / 1000).toFixed(2).padStart(7) + ' ' + fmt(args);
+    lines.push([level, s]); if (lines.length > MAX) lines.shift();
+    if (linesEl) { const d = document.createElement('div'); d.className = level; d.textContent = s; linesEl.appendChild(d); while (linesEl.childNodes.length > MAX) linesEl.firstChild.remove(); const atEnd = linesEl.scrollHeight - linesEl.scrollTop - linesEl.clientHeight < 40; if (atEnd) linesEl.scrollTop = linesEl.scrollHeight; }
+  }
+  for (const [m, lv] of [['log', ''], ['info', ''], ['debug', ''], ['warn', 'w'], ['error', 'e']]) { const o = console[m].bind(console); console[m] = (...a) => { push(lv, a); o(...a); }; }
+  addEventListener('error', e => push('e', [e.message + (e.filename ? ` (${e.filename.split('/').pop()}:${e.lineno})` : '')]));
+  addEventListener('unhandledrejection', e => push('e', ['unhandled rejection:', e.reason]));
+
+  // ---- FPS counter: its own rAF loop, so it measures what the display actually shows ----
+  let fpsOn = false, frames = 0, acc = 0, worst = 0, last = 0, raf = 0;
+  function fpsLoop(t) {
+    raf = requestAnimationFrame(fpsLoop);
+    if (last) { const d = t - last; frames++; acc += d; worst = Math.max(worst, d); }
+    last = t;
+    if (acc >= 500) { fpsEl.textContent = `${Math.round(frames * 1000 / acc)} fps  ${(acc / frames).toFixed(1)} ms  max ${worst.toFixed(0)}`; frames = 0; acc = 0; worst = 0; }
+  }
+  function setFps(on) {
+    fpsOn = on; store.set('devkit.fps', on);
+    if (on && !fpsEl) { fpsEl = el('div', 'dk-fps', '-- fps'); document.body.appendChild(fpsEl); last = 0; frames = acc = worst = 0; raf = requestAnimationFrame(fpsLoop); }
+    if (!on && fpsEl) { cancelAnimationFrame(raf); fpsEl.remove(); fpsEl = null; }
+    syncMenu();
+  }
+  function setLog(on) {
+    store.set('devkit.log', on);
+    if (on && !logEl) {
+      logEl = el('div', 'dk-log', `<div class="dk-bar"><span>${DK.game} · debug log</span><button type="button" data-a="copy">copy</button><button type="button" data-a="clear">clear</button><button type="button" data-a="close">×</button></div><div id="dk-lines"></div>`);
+      linesEl = logEl.querySelector('#dk-lines');
+      for (const [lv, s] of lines) { const d = document.createElement('div'); d.className = lv; d.textContent = s; linesEl.appendChild(d); }
+      logEl.addEventListener('click', e => { const a = e.target.dataset && e.target.dataset.a; if (a === 'clear') { lines.length = 0; linesEl.textContent = ''; } if (a === 'copy') navigator.clipboard && navigator.clipboard.writeText(lines.map(l => l[1]).join('\n')).catch(() => {}); if (a === 'close') setLog(false); });
+      // keep taps and keys on the panel from reaching the game
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown', 'wheel']) logEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(logEl); linesEl.scrollTop = linesEl.scrollHeight;
+    }
+    if (!on && logEl) { logEl.remove(); logEl = linesEl = null; }
+    syncMenu();
+  }
+
+  // ---- fullscreen ----
+  const fsEnabled = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function toggleFs() {
+    try {
+      if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      const r = document.documentElement; const p = (r.requestFullscreen || r.webkitRequestFullscreen).call(r, { navigationUI: 'hide' });
+      if (p && p.catch) p.catch(err => push('w', ['fullscreen refused:', err && err.message]));
+    } catch (err) { push('w', ['fullscreen failed:', err && err.message]); }
+  }
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { push('g', [fsElement() ? 'entered fullscreen' : 'left fullscreen']); syncMenu(); });
+
+  // ---- menu ----
+  function syncMenu() {
+    if (!menuEl) return;
+    const b = menuEl.querySelectorAll('button');
+    b[0].setAttribute('aria-pressed', !!fsElement()); b[0].hidden = !fsEnabled();
+    b[1].setAttribute('aria-pressed', fpsOn); b[2].setAttribute('aria-pressed', !!logEl);
+  }
+  function toggleMenu(force) {
+    const open = force ?? !menuEl;
+    if (open && !menuEl) {
+      menuEl = el('div', 'dk-menu', '<button type="button">Fullscreen</button><button type="button">FPS counter</button><button type="button">Debug log</button>');
+      const [a, b, c] = menuEl.querySelectorAll('button');
+      a.onclick = () => { toggleFs(); toggleMenu(false); }; b.onclick = () => setFps(!fpsOn); c.onclick = () => setLog(!logEl);
+      for (const ev of ['pointerdown', 'touchstart', 'mousedown']) menuEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+      document.body.appendChild(menuEl); syncMenu();
+    } else if (!open && menuEl) { menuEl.remove(); menuEl = null; }
+  }
+
+  // ---- keys: capture phase so they work whatever the game does with keydown; never while typing ----
+  addEventListener('keydown', e => {
+    const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (e.code === 'Backquote' && !e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); if (e.shiftKey) setLog(!logEl); else setFps(!fpsOn); }
+    else if (DK.fKey && e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && fsEnabled()) { e.preventDefault(); e.stopImmediatePropagation(); toggleFs(); }
+  }, true);
+  addEventListener('pointerdown', e => { if (menuEl && !menuEl.contains(e.target) && e.target !== btnEl) toggleMenu(false); }, true);
+
+  function mount() {
+    btnEl = el('button', 'dk-btn', '⋯'); btnEl.type = 'button'; btnEl.title = 'Fullscreen · FPS · debug log';
+    btnEl.setAttribute('aria-label', 'Display and debug options');
+    btnEl.addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
+    for (const ev of ['pointerdown', 'touchstart', 'mousedown']) btnEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+    document.body.appendChild(btnEl);
+    if (store.get('devkit.fps', false)) setFps(true);
+    if (store.get('devkit.log', false)) setLog(true);
+    push('g', [`${DK.game} loaded · ${innerWidth}×${innerHeight} @${devicePixelRatio}x · ${navigator.userAgent}`]);
+  }
+  if (document.body) mount(); else addEventListener('DOMContentLoaded', mount);
+
+  // game-facing API: DBG.log('event', data) for notable game events; DBG.warn / DBG.error likewise
+  window.DBG = { log: (...a) => push('g', a), warn: (...a) => push('w', a), error: (...a) => push('e', a), fps: setFps, logPanel: setLog, fullscreen: toggleFs, mountPoint: () => btnEl };
+})();
+</script>
+<style>
+/* devkit placement: sit left of the minimap (top-right) instead of on top of it */
+#dk-btn,#dk-menu{right:calc(174px + env(safe-area-inset-right))}
+@media (max-width:640px){#dk-btn,#dk-menu{right:calc(120px + env(safe-area-inset-right))}}
+/* FPS readout and log panel sit above the life orb and skill bar */
+#dk-fps{bottom:calc(170px + env(safe-area-inset-bottom))}
+#dk-log{bottom:calc(196px + env(safe-area-inset-bottom))}
+</style>
 
 <canvas id="gl"></canvas>
 <div id="grainwrap"><div id="grain"></div></div>
@@ -292,7 +422,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ROMAN=n=>{const m=[[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']];let s='';for(const[v,r]of m)while(n>=v){s+=r;n-=v;}return s;};
 
-if(!window.THREE){document.querySelector('#title .fine').textContent='The renderer could not load. Check your connection and reload the page.';return;}
+if(!window.THREE){DBG.error('three.js failed to load');document.querySelector('#title .fine').textContent='The renderer could not load. Check your connection and reload the page.';return;}
 
 /* ================= DATA ================= */
 // Online leaderboard (see infra/leaderboard). An empty LB_URL turns the feature off.
@@ -309,8 +439,10 @@ async function lbFetch(entry) {
       body: JSON.stringify({ game: LB_GAME, ...entry }),
       signal: ctl.signal,
     } : { signal: ctl.signal });
+    if (!res.ok) DBG.warn('leaderboard', entry ? 'submit' : 'fetch', 'HTTP ' + res.status);
     return res.ok ? await res.json() : null;
-  } catch {
+  } catch (err) {
+    DBG.warn('leaderboard', entry ? 'submit' : 'fetch', 'failed:', err && err.name === 'AbortError' ? 'timeout' : err);
     return null;
   } finally {
     clearTimeout(timer);
@@ -491,7 +623,7 @@ const AU={ctx:null,last:{}};
 function audioInit(){
   if(AU.ctx){if(AU.ctx.state==='suspended')AU.ctx.resume();return;}
   const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
-  const c=AU.ctx=new AC();
+  const c=AU.ctx=new AC();DBG.log('audio init, state',c.state);
   const comp=c.createDynamicsCompressor();comp.connect(c.destination);
   AU.master=c.createGain();AU.master.gain.value=.75;AU.master.connect(comp);
   const nb=c.createBuffer(1,c.sampleRate*2,c.sampleRate);const d=nb.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;AU.noise=nb;
@@ -917,7 +1049,7 @@ function killEnemy(e){
   if(Math.random()<.11)spawnDrop('item',e.x+rand(-.4,.4),e.z+rand(-.4,.4),makeItem(d,false));
 }
 const xpNext=l=>Math.round(60*Math.pow(l,1.55));
-function gainXp(n){P.xp+=n;while(P.xp>=xpNext(P.level)){P.xp-=xpNext(P.level);P.level++;recalc();P.hp=P.maxHp;P.mana=P.maxMana;sfx('level');log(`You are stronger in the dark. Level ${P.level}.`,'good');
+function gainXp(n){P.xp+=n;while(P.xp>=xpNext(P.level)){P.xp-=xpNext(P.level);P.level++;DBG.log('level up',P.level);recalc();P.hp=P.maxHp;P.mana=P.maxMana;sfx('level');log(`You are stronger in the dark. Level ${P.level}.`,'good');
   for(let i=0;i<50;i++)emit(P.x+rand(-.5,.5),rand(0,.4),P.z+rand(-.5,.5),{vy:rand(2,5),life:rand(.8,1.5),size:rand(.12,.25),color:C.soul,drag:.5});}}
 function hurtPlayer(dmg,src){
   if(!P.alive)return;
@@ -962,6 +1094,7 @@ function drink(k){
   else{const h=Math.round(P.maxMana*.6);P.mana=Math.min(P.maxMana,P.mana+h);burst(P.x,1,P.z,20,[.35,.55,1],2,.8,.16,-1);}
 }
 function playerDie(){
+  DBG.log('player died: depth',S.depth,'level',P.level,'kills',P.kills,'gold',P.gold);
   P.alive=false;P.deadT=0;P.path=null;P.target=null;input.lmb=input.rmb=false;
   sfx('bell',1);sfx('death');log('Your lantern gutters out.','bad');
   burst(P.x,1,P.z,40,C.soul,3,1.5,.2,-.5);
@@ -1213,16 +1346,18 @@ function showBanner(){$('bannerN').textContent='DEPTH '+ROMAN(S.depth);$('banner
 function descend(){
   S.mode='transition';input.lmb=input.rmb=false;sfx('bell');
   $('fade').style.opacity=1;
-  setTimeout(()=>{S.depth++;buildLevel(S.depth);if(playerModel)world.add(playerModel.g);log(`You descend to ${depthName(S.depth)}.`);
+  setTimeout(()=>{S.depth++;DBG.log('descend to depth',S.depth,depthName(S.depth),'hp',Math.round(P.hp));buildLevel(S.depth);if(playerModel)world.add(playerModel.g);log(`You descend to ${depthName(S.depth)}.`);
     P.hp=Math.min(P.maxHp,P.hp+P.maxHp*.25);$('fade').style.opacity=0;showBanner();S.mode='play';},1000);
 }
 function startGame(){
+  DBG.log('game start: depth',S.depth);
   audioInit();$('title').hidden=true;S.mode='play';showBanner();sfx('bell',.8);
   log('The lychgate closes behind you.');
   setTimeout(()=>log('…welcome home, sexton…','whisper'),2600);setTimeout(()=>sfx('whisper',1,-.6),2600);
 }
 function showDeath(){
   $('dDepth').textContent=ROMAN(S.depth);$('dLevel').textContent=P.level;$('dKills').textContent=P.kills;
+  DBG.log('death screen: depth',S.depth,'level',P.level,'kills',P.kills);
   $('dead').hidden=false;S.mode='dead';setTimeout(()=>$('riseBtn').focus(),50);
   lbOpen();
 }
@@ -1242,6 +1377,7 @@ function lbOpen(){
   $('lb').hidden=false;$('dead').classList.add('haslb');$('lbForm').hidden=P.kills<=lbSent;$('lbNote').textContent='';lbRender();
   try{$('lbName').value=localStorage.getItem('hollowmere-name')||'';}catch(_){}
   lbFetch().then(d=>{if(seq!==lbSeq)return;
+    DBG.log('leaderboard fetch:',d&&Array.isArray(d.scores)?d.scores.length+' scores':'offline');
     if(d&&Array.isArray(d.scores)){lbRender(d.scores);if(!d.scores.length)$('lbNote').textContent='No name is written here yet.';}
     else $('lbNote').textContent='The parish roll is out of reach (offline).';});
 }
@@ -1250,8 +1386,9 @@ function lbSubmit(){
   const name=$('lbName').value.trim().slice(0,12)||'ANON',score=P.kills|0,seq=++lbSeq;
   try{localStorage.setItem('hollowmere-name',name);}catch(_){}
   lbBusy=true;$('lbSubmit').disabled=true;$('lbNote').textContent='Inscribing…';
+  DBG.log('leaderboard submit',name,score);
   lbFetch({name,score}).then(d=>{
-    lbBusy=false;$('lbSubmit').disabled=false;
+    lbBusy=false;DBG.log('leaderboard submit result:',d&&Array.isArray(d.scores)?'rank '+d.rank:'offline');$('lbSubmit').disabled=false;
     if(!d||!Array.isArray(d.scores)){if(seq===lbSeq)$('lbNote').textContent='The parish roll is out of reach (offline). Try again.';return;}
     lbSent=score;if(seq!==lbSeq)return;
     $('lbForm').hidden=true;lbRender(d.scores,d.rank);
@@ -1260,11 +1397,12 @@ function lbSubmit(){
 $('lbSubmit').addEventListener('click',lbSubmit);
 for(const t of['keydown','keyup','keypress'])$('lbName').addEventListener(t,e=>{e.stopPropagation();if(t==='keydown'&&e.key==='Enter'){e.preventDefault();lbSubmit();}});
 function rise(){
+  DBG.log('rise again at depth',S.depth,'gold halved to',Math.floor(P.gold/2));
   $('dead').hidden=true;P.gold=Math.floor(P.gold/2);P.alive=true;recalc();P.hp=P.maxHp;P.mana=P.maxMana;
   buildLevel(S.depth);world.add(playerModel.g);playerModel.body.rotation.x=0;playerModel.body.position.y=0;
   S.mode='play';showBanner();log('You rise, colder than before.','bad');
 }
-function togglePause(){if(S.mode==='play'){S.mode='paused';$('pause').hidden=false;$('pauseClose').focus();}else if(S.mode==='paused'){S.mode='play';$('pause').hidden=true;}}
+function togglePause(){if(S.mode==='play'){DBG.log('paused');S.mode='paused';$('pause').hidden=false;$('pauseClose').focus();}else if(S.mode==='paused'){DBG.log('resumed');S.mode='play';$('pause').hidden=true;}}
 function toggleSheet(){const s=$('sheet');if(s.hidden){renderSheet();s.hidden=false;}else s.hidden=true;}
 
 /* ================= INPUT ================= */
@@ -1368,6 +1506,7 @@ function start(data){
   const saved=data.player;
   if(saved){Object.assign(P,saved);Object.assign(gear,data.gear||{});S.depth=data.depth||1;recalc();}
   buildLevel(S.depth);world.add(playerModel.g);
+  DBG.log('boot',saved?'restored run at depth '+S.depth:'title screen');
   if(saved){$('title').hidden=true;S.mode='play';log('The lantern relights.');}
   else{$('startBtn').focus({preventScroll:true});}
   requestAnimationFrame(t=>{last=t;frame(t);});

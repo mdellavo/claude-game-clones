@@ -40,8 +40,10 @@
         body: JSON.stringify({ game: LB_GAME, ...entry }),
         signal: ctl.signal,
       } : { signal: ctl.signal });
-      return res.ok ? await res.json() : null;
-    } catch {
+      if (!res.ok) { DBG.warn('leaderboard', entry ? 'submit' : 'fetch', 'HTTP ' + res.status); return null; }
+      return await res.json();
+    } catch (err) {
+      DBG.warn('leaderboard', entry ? 'submit' : 'fetch', 'failed:', err && err.name === 'AbortError' ? 'timeout' : String(err));
       return null;
     } finally {
       clearTimeout(timer);
@@ -285,6 +287,7 @@
     };
     flags.boss = true;
     $('bossWrap').hidden = false;
+    DBG.log('boss: Warden spawned', { dist: Math.round(dist), hits: stats.hits, shield: Math.round(P.shield) });
   }
   const bossHealth = () => (boss.pods.reduce((s, p) => s + Math.max(0, p.hp), 0) + boss.coreHp) / (48 + 45);
 
@@ -298,6 +301,7 @@
     stats.hits += 5;
     if (boss.pods.every((p) => !p.alive)) {
       boss.phase = 'core';
+      DBG.log('boss: pods destroyed, core exposed');
       say('BRUNT', 'Pods are scrap! The core — hit it when the plates open!');
     }
   }
@@ -306,6 +310,7 @@
     if (boss.coreHp > 0) return;
     boss.coreHp = 0;
     boss.phase = 'dying';
+    DBG.log('boss: Warden destroyed', { hits: stats.hits });
     boss.deathT = 3;
     stats.hits += 30;
     for (const s of eshots) SF.eshotPool.put(s.m);
@@ -464,6 +469,7 @@
     A.sfx.hurt();
     if (P.shield <= 0) {
       P.dead = true;
+      DBG.log('player down', { dist: Math.round(dist), hits: stats.hits, boss: !!boss });
       P.deadT = 2.4;
       ship.visible = false;
       SF.explode(ship.position, 2.5, 34);
@@ -711,6 +717,7 @@
     lbRun++;
     reset();
     mode = 'play';
+    DBG.log('game start', { run: lbRun, best: loadBest(), touch: matchMedia('(pointer: coarse)').matches });
     $('title').hidden = true; $('over').hidden = true; $('paused').hidden = true;
     $('hud').hidden = false;
     for (const k in hudCache) delete hudCache[k];
@@ -730,6 +737,7 @@
     $('sAcc').textContent = (stats.fired ? Math.round((100 * stats.landed) / stats.fired) : 0) + '%';
     $('sShield').textContent = Math.round(P.shield) + '%';
     $('sBest').textContent = best;
+    DBG.log('game over', { won, hits: stats.hits, fired: stats.fired, landed: stats.landed, shield: Math.round(P.shield), best });
     $('hiScore').textContent = 'BEST ' + String(best).padStart(3, '0');
     $('hud').hidden = true; $('touch').hidden = true;
     $('over').hidden = false;
@@ -771,6 +779,7 @@
     const data = await lbFetch();
     if (run !== lbRun || lbBusy || lbSent) return;
     if (!data) { lbNote('LEADERBOARD OFFLINE'); return; }
+    DBG.log('leaderboard loaded', { entries: Array.isArray(data.scores) ? data.scores.length : 0 });
     lbNote(lbRender(data.scores) ? 'TOP PILOTS' : 'NO SCORES YET');
   }
   async function lbSubmit() {
@@ -787,6 +796,7 @@
     lbBusy = false;
     if (!data) { $('lbSend').disabled = false; lbNote('OFFLINE - TRY AGAIN'); return; }
     lbSent = true;
+    DBG.log('score submitted', { name, score: stats.hits, rank: data.rank || null });
     $('lbForm').hidden = true;
     lbRender(data.scores, data.rank);
     lbNote(data.rank ? 'YOU RANK #' + data.rank : 'NOT ON THE BOARD THIS TIME');
@@ -796,8 +806,8 @@
   ['keydown', 'keyup', 'keypress'].forEach((t) => $('lbName').addEventListener(t, (e) => e.stopPropagation()));
 
   function setPause(on) {
-    if (on && mode === 'play') { mode = 'paused'; $('paused').hidden = false; A.music(false); }
-    else if (!on && mode === 'paused') { mode = 'play'; $('paused').hidden = true; if (!P.dead) A.music(true); last = performance.now(); }
+    if (on && mode === 'play') { mode = 'paused'; $('paused').hidden = false; A.music(false); DBG.log('paused'); }
+    else if (!on && mode === 'paused') { mode = 'play'; DBG.log('resumed'); $('paused').hidden = true; if (!P.dead) A.music(true); last = performance.now(); }
   }
 
   // ---------- input ----------
