@@ -142,6 +142,12 @@ body.touch #hint{display:none}
   body.touch #pauseBtn{top:calc(env(safe-area-inset-top,0px) + 150px)}
   body.touch #feed{top:calc(env(safe-area-inset-top,0px) + 96px);max-width:62vw}
 }
+/* phones in landscape: the pause button landed on the action buttons and the full-size radar ran into them,
+   so use the compact radar and park pause in the bottom row, just left of the buttons */
+@media (max-height:500px){
+  body.touch #mini{width:84px;height:84px}
+  body.touch #pauseBtn{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 64px);right:calc(env(safe-area-inset-right,0px) + 192px)}
+}
 @media (prefers-reduced-motion:reduce){.blink{animation:none}#banner.show{animation-duration:3s}}
 /* leaderboard viewer opened from the title screen */
 #lbOpenBtn[hidden],#lbView[hidden]{display:none!important}
