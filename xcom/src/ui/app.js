@@ -166,6 +166,7 @@ export class App {
       this.hud = null;
     }
     clear(this.root);
+    document.body.classList.remove('in-battle'); // the touch camera pad (index.html) only shows in battle
     const s = h('div', { class: 'screen ' + cls }, h('div', { class: 'stars' }));
     this.root.append(s);
     return s;
@@ -408,6 +409,7 @@ export class App {
     this.saveRoster();
     const s = this.screen();
     s.className = 'battle';
+    document.body.classList.add('in-battle');
     const seed = (Math.random() * 2 ** 31) >>> 0;
     window.DBG?.log('mission start', { ...this.opts, squad: squad.length, seed });
     const rng = new RNG(seed);
