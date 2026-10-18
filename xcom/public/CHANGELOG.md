@@ -4,6 +4,7 @@ Every change to `xcom/`, newest first, generated from the git history by `tools/
 
 ## 2026-10-18
 
+- **Add a per-game changelog viewable from each game's devkit menu** `1aea49a`
 - **Swap Poly Pizza models into the rest of the games** `79cdae7`
 
 ## 2026-10-17

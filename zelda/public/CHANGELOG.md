@@ -2,6 +2,10 @@
 
 Every change to `zelda/`, newest first, generated from the git history by `tools/changelog.mjs`.
 
+## 2026-10-18
+
+- **Add a per-game changelog viewable from each game's devkit menu** `1aea49a`
+
 ## 2026-10-17
 
 - **Float Zelda's status bar over a full-height scene** `19348b5`
