@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Noise2D, mulberry32, smoothstep, lerp, clamp } from './noise.js';
+import { MDL, bake, fitBaked, bakedGeo } from './models.js';
 
 export class Heightfield {
   constructor(minX, minZ, cell, nx, nz) {
@@ -174,6 +175,7 @@ function paint(geo, color) {
 }
 
 function palmGeometry() {
+  if (MDL.palm) return bakedGeo(MDL.palm, { height: 9.5 }, { lift: 0.3 });
   const parts = [];
   const trunk = new THREE.CylinderGeometry(0.22, 0.38, 8, 7, 6);
   const tp = trunk.attributes.position;
@@ -202,6 +204,7 @@ function palmGeometry() {
 }
 
 function pineGeometry(snow) {
+  if (snow && MDL['pine-snow']) return bakedGeo(MDL['pine-snow'], { height: 9 }, { lift: 0.3 });
   const parts = [paint(new THREE.CylinderGeometry(0.25, 0.35, 2, 6).translate(0, 1, 0), 0x5a4030)];
   for (let i = 0; i < 3; i++) {
     const r = 2.6 - i * 0.7, h = 3.4 - i * 0.6;
@@ -225,6 +228,7 @@ function rockGeometry(rnd) {
 }
 
 function houseGeometry() {
+  if (MDL.house) { const raw = bake(MDL.house, { parts: { walls: /_defaultMat/, roof: /roof/, rest: /.*/ }, lift: 0.2 }); raw.walls.attributes.color.array.fill(0.95); const h = fitBaked(raw, { width: 6.5 }); return mergeGeometries([h.walls, h.roof, h.rest].map((g) => { g.deleteAttribute('uv'); return g; })); }
   const walls = paint(new THREE.BoxGeometry(6, 4, 5).translate(0, 2, 0), 0xf2ede4);
   const roof = paint(new THREE.ConeGeometry(4.9, 2.6, 4).rotateY(Math.PI / 4).scale(1.05, 1, 0.9).translate(0, 5.3, 0), 0xc4553a);
   const door = paint(new THREE.BoxGeometry(1.1, 2, 0.1).translate(0, 1, 2.55), 0x5a3a2a);
@@ -235,6 +239,13 @@ function houseGeometry() {
 
 function lighthouse() {
   const g = new THREE.Group();
+  if (MDL.lighthouse) {
+    // Jarlan Perez's lighthouse (CC-BY), standing on its own rock
+    const obj = MDL.lighthouse.scene.clone(true); obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj), sz = box.getSize(new THREE.Vector3()), k = 30 / sz.y;
+    obj.scale.multiplyScalar(k); obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+    g.add(obj); return g;
+  }
   const white = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.6 });
   const red = new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.6 });
   for (let i = 0; i < 6; i++) {
@@ -298,7 +309,7 @@ export function buildProps(hf, course, track, waterLevel = 0) {
   instanced(palmGeometry(), vmat, P.palms, (h, sl, d) => h > 1.0 && h < 16 && sl < 0.45 && d > w + 8, () => 0.8 + rnd() * 0.55, 0.1);
   instanced(pineGeometry(course.land.palette === 'glacier'), vmat, P.pines, (h, sl, d) => h > 2 && h < 70 && sl < 0.7 && d > w + 10, () => 0.9 + rnd() * 0.9, 0.2);
   const rockColor = course.land.palette === 'glacier' ? 0x5d636b : course.land.palette === 'storm' ? 0x3f4144 : 0x7a7166;
-  instanced(rockGeometry(rnd), new THREE.MeshStandardMaterial({ color: rockColor, roughness: 0.95, flatShading: true }), P.rocks,
+  instanced(MDL.rock ? bakedGeo(MDL.rock, { width: 2 }) : rockGeometry(rnd), new THREE.MeshStandardMaterial({ color: rockColor, roughness: 0.95, flatShading: true }), P.rocks,
     (h, sl, d) => h > -2.5 && h < 6 && d > w + 6, () => 1.5 + rnd() * 4.5, 0.35);
   instanced(houseGeometry(), vmat, P.houses, (h, sl, d) => h > 2 && h < 14 && sl < 0.22 && d > w + 20 && d < w + 260, () => 0.9 + rnd() * 0.5, 0.1);
 

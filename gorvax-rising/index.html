@@ -438,6 +438,8 @@ window.addEventListener('error', e => {
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const $ = id => document.getElementById(id);
 const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -614,6 +616,126 @@ const roofMat = new THREE.MeshStandardMaterial({ color: 0x6d6c67, roughness: 1 }
 const propMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.05 });
 const propMatDS = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide });
 const wreckMat = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0x2a2622, roughness: 1 });
+// ---------- models ----------
+// Low-poly models from Poly Pizza (credits in the README). Each ships as models/<name>.js, a module wrapping
+// the GLB in base64 (artifacts do not serve .glb); textures load through image elements so the artifact
+// sandbox allows them. Anything that fails to load leaves the hand-built geometry in place.
+async function loadModel(loader, name) {
+  const { default: b64 } = await import(`./models/${name}.js`);
+  const s = atob(b64), bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return loader.parseAsync(bytes.buffer, '');
+}
+async function loadModels(names) {
+  const loader = new GLTFLoader(), out = {};
+  loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  await Promise.all(names.map(async n => { try { out[n] = await loadModel(loader, n); } catch (e) { console.warn('model failed to load:', n, e && e.message); } }));
+  return out;
+}
+// a copy of a model standing on its own origin, centred, scaled so one dimension hits a target
+function fitClone(gltf, size, opts = {}) {
+  const skinned = opts.skinned ?? gltf.animations.length > 0;
+  const obj = skinned ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+  if (opts.rotY) obj.rotation.y = opts.rotY;
+  obj.updateMatrixWorld(true);
+  obj.traverse(o => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  const box = new THREE.Box3().setFromObject(obj, true), sz = box.getSize(new THREE.Vector3());
+  const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+  obj.scale.multiplyScalar(k);
+  obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse(o => { if (o.isMesh) { o.castShadow = opts.shadow !== false; o.receiveShadow = true; if (o.isSkinnedMesh) o.frustumCulled = false; } });
+  const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); g.userData.root = obj;
+  return g;
+}
+// repaint materials by name: recolor(g, { Main: { color: 0xff0000 } })
+const recolor = (g, map) => g.traverse(o => { if (!o.isMesh) return; const ms = [].concat(o.material).map(m => { const c = map[m.name] || map['*']; if (!c) return m; const n = m.clone(); for (const k in c) { if (n[k] && n[k].isColor) n[k].set(c[k]); else n[k] = c[k]; } return n; }); o.material = ms.length === 1 ? ms[0] : ms; });
+// an animation mixer with named actions: anim(g, gltf, ['Run', 'Idle'])
+function anim(g, gltf, names) {
+  const mixer = new THREE.AnimationMixer(g.userData.root), acts = {};
+  for (const n of names) { const c = gltf.animations.find(a => a.name === n || a.name.endsWith('|' + n)); if (c) { acts[n] = mixer.clipAction(c); } }
+  return { mixer, acts, play(n, fade = .2) { const a = acts[n]; if (!a || this.cur === a) return; a.reset().fadeIn(fade).play(); if (this.cur) this.cur.fadeOut(fade); this.cur = a; } };
+}
+// bake(gltf, { parts: { name: /material/ }, clip, time, lift }) -> { name: geometry }: the model posed and flattened
+// into plain vertex-coloured triangles (material colour x texture x vertex colour), ready for merging or instancing
+const _texReaders = new Map();
+function texReader(tex) {
+  let r = _texReaders.get(tex); if (r) return r;
+  const img = tex.image, c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data, w = c.width, h = c.height;
+  r = (u, v, out) => { const px = Math.min(w - 1, Math.floor((u - Math.floor(u)) * w)), py = Math.min(h - 1, Math.floor((v - Math.floor(v)) * h)), i = (py * w + px) * 4; return out.setRGB(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255, THREE.SRGBColorSpace); };
+  _texReaders.set(tex, r); return r;
+}
+function bake(gltf, { parts = { all: /.*/ }, clip = null, time = 0, lift = 0, byNode = false } = {}) {
+  const obj = SkeletonUtils.clone(gltf.scene);
+  if (clip && gltf.animations.length) { const a = gltf.animations.find(x => clip.test(x.name)) || gltf.animations[0]; const mx = new THREE.AnimationMixer(obj); mx.clipAction(a).play(); mx.update(time); }
+  obj.updateMatrixWorld(true);
+  const acc = {}; for (const k in parts) acc[k] = { p: [], c: [] };
+  const v = new THREE.Vector3(), tc = new THREE.Color(), cc = new THREE.Color();
+  obj.traverse(m => {
+    if (!m.isMesh) return;
+    if (m.isSkinnedMesh) m.skeleton.update();
+    const mats = Array.isArray(m.material) ? m.material : [m.material], g = m.geometry, pos = g.attributes.position, uv = g.attributes.uv, vcol = g.attributes.color, idx = g.index;
+    const groups = g.groups.length ? g.groups : [{ start: 0, count: idx ? idx.count : pos.count, materialIndex: 0 }];
+    for (const gr of groups) {
+      const mat = mats[gr.materialIndex] || mats[0];
+      let name = mat.name || ''; if (byNode) { name = ''; for (let o = m; o; o = o.parent) name += o.name + '/'; }
+      const key = Object.keys(parts).find(k => parts[k].test(name)); if (!key) continue;
+      const out = acc[key], samp = mat.map ? texReader(mat.map) : null;
+      for (let i = gr.start; i < gr.start + gr.count; i++) {
+        const vi = idx ? idx.getX(i) : i;
+        m.getVertexPosition(vi, v).applyMatrix4(m.matrixWorld); out.p.push(v.x, v.y, v.z);
+        tc.copy(mat.color || cc.setRGB(1, 1, 1));
+        if (samp && uv) tc.multiply(samp(uv.getX(vi), uv.getY(vi), cc));
+        if (vcol) tc.multiply(cc.fromBufferAttribute(vcol, vi));
+        if (lift) { const k = 1 - lift * 0.25, f = 1 + lift * 0.2; tc.setRGB(Math.min(1, tc.r ** k * f), Math.min(1, tc.g ** k * f), Math.min(1, tc.b ** k * f)); }
+        out.c.push(tc.r, tc.g, tc.b);
+      }
+    }
+  });
+  const res = {};
+  for (const k in acc) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(acc[k].p, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(acc[k].c, 3)); geo.computeVertexNormals(); res[k] = geo; }
+  return res;
+}
+// stand baked parts on the ground, centred, scaled so one dimension hits a target; returns parts with .size
+function fitBaked(parts, { height, width, length, rotY = 0 }) {
+  const box = new THREE.Box3(), geos = Object.values(parts).filter(g => g.attributes.position.count);
+  if (rotY) geos.forEach(g => g.rotateY(rotY));
+  geos.forEach(g => { g.computeBoundingBox(); box.union(g.boundingBox); });
+  const size = box.getSize(new THREE.Vector3()), s = height ? height / size.y : width ? width / size.x : length / size.z;
+  geos.forEach(g => { g.translate(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2); g.scale(s, s, s); g.computeBoundingBox(); });
+  parts.size = size.multiplyScalar(s);
+  return parts;
+}
+// one baked geometry at a target size: bakedGeo(gltf, { height: 5 })
+const bakedGeo = (gltf, size, opts) => fitBaked(bake(gltf, opts), size).all;
+// a baked model with its longest horizontal side laid along 'x' or 'z', scaled to that length
+function along(gltf, axis, length, opts = {}) {
+  const raw = bake(gltf, opts); const all = Object.values(raw); const b = new THREE.Box3(); all.forEach(g => { g.computeBoundingBox(); b.union(g.boundingBox); });
+  const xLong = b.max.x - b.min.x > b.max.z - b.min.z, turn = (axis === 'x') !== xLong ? Math.PI / 2 : 0;
+  return fitBaked(raw, axis === 'x' ? { width: length, rotY: turn } : { length, rotY: turn });
+}
+const MDL = await loadModels(['tank', 'heli', 'jet', 'cargo', 'boat', 'wagon', 'car', 'pine']);
+// baked stand-ins for the hand-built vehicles, each facing +z (or laid along x for the rail wagons)
+const MG = (() => {
+  const o = {};
+  if (MDL.tank) {
+    // hull and turret come apart so the turret can still traverse; it pivots on its own centre
+    const t = along(MDL.tank, 'z', 7.2, { parts: { turret: /Turret|Gun/, hull: /.*/ }, byNode: true, lift: .6 });
+    const piv = new THREE.Vector3(); t.turret.boundingBox.getCenter(piv);
+    t.turret.translate(-piv.x, 0, -piv.z);
+    o.hull = t.hull; o.turret = t.turret; o.turretPivot = piv;
+  }
+  if (MDL.heli) o.heli = along(MDL.heli, 'z', 11, { lift: .5 }).all;
+  if (MDL.jet) o.jet = along(MDL.jet, 'z', 13, { lift: .4 }).all;
+  if (MDL.car) o.car = along(MDL.car, 'z', 4.4, { lift: .4 }).all;
+  if (MDL.cargo) o.cargo = along(MDL.cargo, 'z', 64, { lift: .3 }).all;
+  if (MDL.boat) { o.tug = along(MDL.boat, 'z', 14, { lift: .3 }).all; o.ferry = along(MDL.boat, 'z', 28, { lift: .3 }).all; o.fishing = along(MDL.boat, 'z', 11, { lift: .3 }).all; }
+  if (MDL.wagon) o.wagon = along(MDL.wagon, 'x', 11.8, { lift: .4 }).all;
+  if (MDL.pine) o.tree = fitBaked(bake(MDL.pine, { lift: .8 }), { height: 7 }).all;
+  // the hand-built heli and jet had their centres at the origin; centre these vertically too
+  for (const k of ['heli', 'jet']) if (o[k]) { o[k].computeBoundingBox(); o[k].translate(0, -(o[k].boundingBox.max.y) / 2, 0); }
+  return o;
+})();
 const rubbleMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
 const glowMat = new THREE.MeshBasicMaterial({ color: 0xffe9a0 });
 
@@ -1385,7 +1507,7 @@ function genRail() {
     if (lead) parts.push(P(G.box, col, 6.2, 2.4, 0, 1.4, 2.8, 3), P(G.box, 0xfff4c0, 6.95, 1.7, 0, 0.1, 0.5, 2));
     return mergeParts(parts);
   };
-  const g0 = trainGeo(false), g1 = trainGeo(true);
+  const g0 = MG.wagon || trainGeo(false), g1 = MG.wagon || trainGeo(true);
   const train = { x: -200, dir: 1, spd: 17, cars: [] };
   for (let k = 0; k < cars; k++) {
     const m = new THREE.Mesh(k === 0 ? g1 : g0, propMat); m.castShadow = true; world.add(m);
@@ -1475,7 +1597,7 @@ let cars = [], carMesh = null, trains = [], boats = [];
 const carGeo = mergeParts([P(G.box, 0xffffff, 0, 0.75, 0, 2, 1, 4.3), P(G.box, 0x2b3036, 0, 1.55, -0.2, 1.8, 0.75, 2.3), P(G.box, 0x111111, 0, 0.35, 1.3, 2.05, 0.6, 0.7), P(G.box, 0x111111, 0, 0.35, -1.3, 2.05, 0.6, 0.7)]);
 function genCars() {
   cars = [];
-  carMesh = new THREE.InstancedMesh(carGeo, propMat, CARN); carMesh.userData.keepGeo = true;
+  carMesh = new THREE.InstancedMesh(MG.car || carGeo, propMat, CARN); carMesh.userData.keepGeo = true;
   carMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); carMesh.castShadow = false; carMesh.frustumCulled = false; world.add(carMesh);
   const cols = [0xd8d4ca, 0x2a2d31, 0xb52c22, 0x2d5c9a, 0xc9c9c9, 0x7d8a52, 0xe0b030, 0x5a3c6e, 0xf2f2f2, 0x1f4a40];
   for (let n = 0; n < CARN; n++) {
@@ -1568,6 +1690,8 @@ function genBoats() {
   }
 }
 function boatGeo(type) {
+  if (type === 'cargo' && MG.cargo) return MG.cargo;
+  if (type !== 'cargo' && MG[type]) return MG[type];
   const p = [];
   if (type === 'cargo') {
     p.push(P(G.box, 0x2b3a4a, 0, 2.5, 0, 12, 6, 58), P(G.cone4, 0x2b3a4a, 0, 2.5, 31.5, 8.5, 5, 6, Math.PI / 2, Math.PI / 4, 0), P(G.box, 0x9a2a22, 0, 0.2, 0, 12.1, 1.4, 58));
@@ -1603,10 +1727,11 @@ let trees = [], treeMesh = null, treeState = null;
 const treeGeo = mergeParts([P(G.cyl6, 0x5a4330, 0, 1.2, 0, 0.3, 2.4, 0.3), P(G.sph, 0xffffff, 0, 3.6, 0, 2, 2.4, 2)]);
 function genTrees() {
   for (let k = 0; k < 90; k++) { const a = rng() * 6.283, r = R(250, 420); const x = Math.cos(a) * r, z = Math.sin(a) * r; if (z > QUAY - 10) continue; trees.push([x, z, R(1, 1.8)]); }
-  treeMesh = new THREE.InstancedMesh(treeGeo, propMat, trees.length); treeMesh.userData.keepGeo = true;
+  treeMesh = new THREE.InstancedMesh(MG.tree || treeGeo, propMat, trees.length); treeMesh.userData.keepGeo = true;
   treeMesh.castShadow = true;
   treeState = new Uint8Array(trees.length);
-  const greens = cfg.time === 'night' ? [0x1e3526, 0x243c2a] : cfg.time === 'dusk' ? [0x4c5a30, 0x5a5a2c, 0x3f4e2c] : [0x4f7a38, 0x5f8a3e, 0x3e6a34, 0x6f8a3a];
+  const greens = MG.tree ? (cfg.time === 'night' ? [0x8090a0, 0x7a8a98] : cfg.time === 'dusk' ? [0xffe0c8, 0xf0d8c0] : [0xffffff, 0xe8f4e0, 0xf4ffe8])
+    : cfg.time === 'night' ? [0x1e3526, 0x243c2a] : cfg.time === 'dusk' ? [0x4c5a30, 0x5a5a2c, 0x3f4e2c] : [0x4f7a38, 0x5f8a3e, 0x3e6a34, 0x6f8a3a];
   trees.forEach(([x, z, s], i) => { treeMesh.setMatrixAt(i, _cm.compose(_p.set(x, 0, z), _cq.setFromAxisAngle(UP, rng() * 6), _s.set(s, s, s))); treeMesh.setColorAt(i, _c.set(pick(greens))); });
   world.add(treeMesh);
 }
@@ -1997,7 +2122,8 @@ function spawnUnit(type) {
     u.node = n; u.prev = null; u.target = n; u.ground = true; u.r = 3.5; u.hp = type === 'tank' ? 30 : 24;
     const np = nodePos(n); u.pos.set(np.x + rr(-2, 2), 0, np.z + rr(-2, 2));
     u.mesh = new THREE.Group();
-    if (type === 'tank') { u.mesh.add(new THREE.Mesh(milGeo.hull, propMat)); u.turret = new THREE.Mesh(milGeo.turret, propMat); u.turret.position.y = 2; u.mesh.add(u.turret); u.hold = rr(60, 85); u.range = 125; }
+    if (type === 'tank' && MG.hull) { u.mesh.add(new THREE.Mesh(MG.hull, propMat)); u.turret = new THREE.Mesh(MG.turret, propMat); u.turret.position.set(MG.turretPivot.x, 0, MG.turretPivot.z); u.mesh.add(u.turret); u.hold = rr(60, 85); u.range = 125; }
+    else if (type === 'tank') { u.mesh.add(new THREE.Mesh(milGeo.hull, propMat)); u.turret = new THREE.Mesh(milGeo.turret, propMat); u.turret.position.y = 2; u.mesh.add(u.turret); u.hold = rr(60, 85); u.range = 125; }
     else { u.mesh.add(new THREE.Mesh(milGeo.truck, propMat)); u.turret = new THREE.Mesh(milGeo.pod, propMat); u.turret.position.set(0, 1.8, -1.4); u.mesh.add(u.turret); u.hold = rr(110, 140); u.range = 220; u.fireT = rr(4, 7); }
     u.yaw = 0;
   } else if (type === 'heli') {
@@ -2005,13 +2131,13 @@ function spawnUnit(type) {
     u.pos.set(K.pos.x + Math.cos(a) * 320, 45, K.pos.z + Math.sin(a) * 320 - 60);
     u.pos.z = Math.min(u.pos.z, 120);
     u.orbit = rand() * 6.283; u.orbitDir = rand() < 0.5 ? 1 : -1; u.rad = rr(55, 80); u.alt = rr(30, 48); u.r = 5; u.hp = 22; u.vel = new V3();
-    u.mesh = new THREE.Group(); u.mesh.add(new THREE.Mesh(milGeo.heli, propMat)); u.rotor = new THREE.Mesh(milGeo.rotor, propMat); u.rotor.position.y = 1.9; u.mesh.add(u.rotor);
+    u.mesh = new THREE.Group(); u.mesh.add(new THREE.Mesh(MG.heli || milGeo.heli, propMat)); u.rotor = new THREE.Mesh(milGeo.rotor, propMat); u.rotor.position.y = MG.heli ? MG.heli.boundingBox.max.y + 0.2 : 1.9; u.mesh.add(u.rotor);
     u.air = true;
   } else if (type === 'jet') {
     const a = rand() * 6.283;
     u.pos.set(K.pos.x + Math.cos(a) * 520, 70, K.pos.z + Math.sin(a) * 520);
     u.heading = Math.atan2(K.pos.x - u.pos.x, K.pos.z - u.pos.z) + rr(-0.6, 0.6); u.commit = 0; u.fired = false; u.roll = 0; u.r = 5; u.hp = 20; u.speed = rr(95, 115);
-    u.mesh = new THREE.Mesh(milGeo.jet, propMat); u.air = true; u.passed = true;
+    u.mesh = new THREE.Mesh(MG.jet || milGeo.jet, propMat); u.air = true; u.passed = true;
   }
   u.mesh.traverse(o => { if (o.isMesh) o.castShadow = true; });
   u.mesh.position.copy(u.pos); scene.add(u.mesh); units.push(u);

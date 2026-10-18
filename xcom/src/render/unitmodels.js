@@ -1,5 +1,32 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { itemDef } from '../data/items.js';
+
+// Quaternius soldier and alien models (Poly Pizza, CC0), shipped as models/<name>.js modules wrapping the GLB in
+// base64 so the published single page can carry them. They load in the background; a unit built before they
+// arrive (or if they fail) keeps its hand-built body.
+const MDL = {};
+(async () => {
+  const loader = new GLTFLoader();
+  for (const n of ['soldier', 'sectoid']) {
+    try {
+      const { default: b64 } = await import(/* @vite-ignore */ new URL('models/' + n + '.js', document.baseURI).href);
+      const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+      MDL[n] = await loader.parseAsync(u.buffer, '');
+    } catch (e) { console.warn('model failed to load:', n, e && e.message); }
+  }
+})();
+// a posed copy of a model, scaled to a height, facing -z like the hand-built units
+function modelBody(name, height, tint) {
+  const obj = SkeletonUtils.clone(MDL[name].scene);
+  obj.updateMatrixWorld(true);
+  obj.traverse((o) => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  const box = new THREE.Box3().setFromObject(obj, true), k = height / (box.max.y - box.min.y);
+  obj.scale.multiplyScalar(k); obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse((o) => { if (!o.isMesh) return; o.castShadow = true; o.frustumCulled = false; if (tint && tint[o.material.name] != null) { o.material = o.material.clone(); o.material.color.set(tint[o.material.name]); } });
+  const g = new THREE.Group(); g.add(obj); g.rotation.y = Math.PI; return g;
+}
 
 const matCache = new Map();
 export function mat(hex, emissive = 0) {
@@ -93,7 +120,12 @@ export function buildUnitModel(u) {
   const s = { root, body, weaponSlot: null, legs: [], hover: 0 };
   const color = u.color ?? 0x888888;
   switch (u.model) {
-    case 'soldier': {
+    case 'soldier': if (MDL.soldier) {
+      // armour colour carries over onto the tactical suit
+      body.add(modelBody('soldier', 0.82, { Swat: color }));
+      const ws = new THREE.Group(); ws.position.set(0.12, 0.46, -0.12); body.add(ws); s.weaponSlot = ws;
+      break;
+    } else {
       const armor = color;
       const bulky = u.armorMax.front >= 100;
       const w = bulky ? 1.15 : 1;
@@ -117,7 +149,11 @@ export function buildUnitModel(u) {
       }
       break;
     }
-    case 'sectoid': {
+    case 'sectoid': if (MDL.sectoid) {
+      body.add(modelBody('sectoid', 0.72, { Alien_Main: color }));
+      const ws = new THREE.Group(); ws.position.set(0.1, 0.36, -0.1); body.add(ws); s.weaponSlot = ws;
+      break;
+    } else {
       s.legs = [box(body, 0.06, 0.28, 0.06, color, -0.05, 0, 0), box(body, 0.06, 0.28, 0.06, color, 0.05, 0, 0)];
       box(body, 0.16, 0.22, 0.1, 0x8a8f9a, 0, 0.27, 0);
       box(body, 0.04, 0.22, 0.04, color, -0.11, 0.28, -0.02);

@@ -333,6 +333,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const $ = id => document.getElementById(id);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -577,6 +579,105 @@ function buildingMat() {
   });
 }
 const city = new THREE.Group(); scene.add(city);
+// ---------- models ----------
+// Low-poly models from Poly Pizza (credits in the README). Each ships as models/<name>.js, a module wrapping
+// the GLB in base64 (artifacts do not serve .glb); textures load through image elements so the artifact
+// sandbox allows them. Anything that fails to load leaves the hand-built geometry in place.
+async function loadModel(loader, name) {
+  const { default: b64 } = await import(`./models/${name}.js`);
+  const s = atob(b64), bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return loader.parseAsync(bytes.buffer, '');
+}
+async function loadModels(names) {
+  const loader = new GLTFLoader(), out = {};
+  loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  await Promise.all(names.map(async n => { try { out[n] = await loadModel(loader, n); } catch (e) { console.warn('model failed to load:', n, e && e.message); } }));
+  return out;
+}
+// a copy of a model standing on its own origin, centred, scaled so one dimension hits a target
+function fitClone(gltf, size, opts = {}) {
+  const skinned = opts.skinned ?? gltf.animations.length > 0;
+  const obj = skinned ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+  if (opts.rotY) obj.rotation.y = opts.rotY;
+  obj.updateMatrixWorld(true);
+  obj.traverse(o => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  const box = new THREE.Box3().setFromObject(obj, true), sz = box.getSize(new THREE.Vector3());
+  const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+  obj.scale.multiplyScalar(k);
+  obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse(o => { if (o.isMesh) { o.castShadow = opts.shadow !== false; o.receiveShadow = true; if (o.isSkinnedMesh) o.frustumCulled = false; } });
+  const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); g.userData.root = obj;
+  return g;
+}
+// repaint materials by name: recolor(g, { Main: { color: 0xff0000 } })
+const recolor = (g, map) => g.traverse(o => { if (!o.isMesh) return; const ms = [].concat(o.material).map(m => { const c = map[m.name] || map['*']; if (!c) return m; const n = m.clone(); for (const k in c) { if (n[k] && n[k].isColor) n[k].set(c[k]); else n[k] = c[k]; } return n; }); o.material = ms.length === 1 ? ms[0] : ms; });
+// an animation mixer with named actions: anim(g, gltf, ['Run', 'Idle'])
+function anim(g, gltf, names) {
+  const mixer = new THREE.AnimationMixer(g.userData.root), acts = {};
+  for (const n of names) { const c = gltf.animations.find(a => a.name === n || a.name.endsWith('|' + n)); if (c) { acts[n] = mixer.clipAction(c); } }
+  return { mixer, acts, play(n, fade = .2) { const a = acts[n]; if (!a || this.cur === a) return; a.reset().fadeIn(fade).play(); if (this.cur) this.cur.fadeOut(fade); this.cur = a; } };
+}
+// bake(gltf, { parts: { name: /material/ }, clip, time, lift }) -> { name: geometry }: the model posed and flattened
+// into plain vertex-coloured triangles (material colour x texture x vertex colour), ready for merging or instancing
+const _texReaders = new Map();
+function texReader(tex) {
+  let r = _texReaders.get(tex); if (r) return r;
+  const img = tex.image, c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data, w = c.width, h = c.height;
+  r = (u, v, out) => { const px = Math.min(w - 1, Math.floor((u - Math.floor(u)) * w)), py = Math.min(h - 1, Math.floor((v - Math.floor(v)) * h)), i = (py * w + px) * 4; return out.setRGB(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255, THREE.SRGBColorSpace); };
+  _texReaders.set(tex, r); return r;
+}
+function bake(gltf, { parts = { all: /.*/ }, clip = null, time = 0, lift = 0, byNode = false } = {}) {
+  const obj = SkeletonUtils.clone(gltf.scene);
+  if (clip && gltf.animations.length) { const a = gltf.animations.find(x => clip.test(x.name)) || gltf.animations[0]; const mx = new THREE.AnimationMixer(obj); mx.clipAction(a).play(); mx.update(time); }
+  obj.updateMatrixWorld(true);
+  const acc = {}; for (const k in parts) acc[k] = { p: [], c: [] };
+  const v = new THREE.Vector3(), tc = new THREE.Color(), cc = new THREE.Color();
+  obj.traverse(m => {
+    if (!m.isMesh) return;
+    if (m.isSkinnedMesh) m.skeleton.update();
+    const mats = Array.isArray(m.material) ? m.material : [m.material], g = m.geometry, pos = g.attributes.position, uv = g.attributes.uv, vcol = g.attributes.color, idx = g.index;
+    const groups = g.groups.length ? g.groups : [{ start: 0, count: idx ? idx.count : pos.count, materialIndex: 0 }];
+    for (const gr of groups) {
+      const mat = mats[gr.materialIndex] || mats[0];
+      let name = mat.name || ''; if (byNode) { name = ''; for (let o = m; o; o = o.parent) name += o.name + '/'; }
+      const key = Object.keys(parts).find(k => parts[k].test(name)); if (!key) continue;
+      const out = acc[key], samp = mat.map ? texReader(mat.map) : null;
+      for (let i = gr.start; i < gr.start + gr.count; i++) {
+        const vi = idx ? idx.getX(i) : i;
+        m.getVertexPosition(vi, v).applyMatrix4(m.matrixWorld); out.p.push(v.x, v.y, v.z);
+        tc.copy(mat.color || cc.setRGB(1, 1, 1));
+        if (samp && uv) tc.multiply(samp(uv.getX(vi), uv.getY(vi), cc));
+        if (vcol) tc.multiply(cc.fromBufferAttribute(vcol, vi));
+        if (lift) { const k = 1 - lift * 0.25, f = 1 + lift * 0.2; tc.setRGB(Math.min(1, tc.r ** k * f), Math.min(1, tc.g ** k * f), Math.min(1, tc.b ** k * f)); }
+        out.c.push(tc.r, tc.g, tc.b);
+      }
+    }
+  });
+  const res = {};
+  for (const k in acc) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(acc[k].p, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(acc[k].c, 3)); geo.computeVertexNormals(); res[k] = geo; }
+  return res;
+}
+// stand baked parts on the ground, centred, scaled so one dimension hits a target; returns parts with .size
+function fitBaked(parts, { height, width, length, rotY = 0 }) {
+  const box = new THREE.Box3(), geos = Object.values(parts).filter(g => g.attributes.position.count);
+  if (rotY) geos.forEach(g => g.rotateY(rotY));
+  geos.forEach(g => { g.computeBoundingBox(); box.union(g.boundingBox); });
+  const size = box.getSize(new THREE.Vector3()), s = height ? height / size.y : width ? width / size.x : length / size.z;
+  geos.forEach(g => { g.translate(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2); g.scale(s, s, s); g.computeBoundingBox(); });
+  parts.size = size.multiplyScalar(s);
+  return parts;
+}
+// one baked geometry at a target size: bakedGeo(gltf, { height: 5 })
+const bakedGeo = (gltf, size, opts) => fitBaked(bake(gltf, opts), size).all;
+// a baked model with its longest horizontal side laid along 'x' or 'z', scaled to that length
+function along(gltf, axis, length, opts = {}) {
+  const raw = bake(gltf, opts); const all = Object.values(raw); const b = new THREE.Box3(); all.forEach(g => { g.computeBoundingBox(); b.union(g.boundingBox); });
+  const xLong = b.max.x - b.min.x > b.max.z - b.min.z, turn = (axis === 'x') !== xLong ? Math.PI / 2 : 0;
+  return fitBaked(raw, axis === 'x' ? { width: length, rotY: turn } : { length, rotY: turn });
+}
+const MDL = await loadModels(['taxi', 'payphone', 'hydrant', 'tree']);
 function buildCity() {
   const rng = seeded(1995), r = (a, b) => a + rng() * (b - a);
   lots = []; lotsByBlock = AVE.map(() => ST.map(() => []));
@@ -651,6 +752,13 @@ function buildCity() {
   const poleI = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat(0x1a1c22), lamps.length * 2), headI = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffb060).multiplyScalar(2.2), toneMapped: false }), lamps.length);
   lamps.forEach((l, i) => { M4.compose(V.set(l[0], 3.6, l[1]), Q, S.set(.2, 7.2, .2)); poleI.setMatrixAt(i * 2, M4); M4.compose(V.set(l[0] + l[2] * 1.2, 7.1, l[1] + l[3] * 1.2), Q, S.set(l[2] ? 2.4 : .15, .12, l[3] ? 2.4 : .15)); poleI.setMatrixAt(i * 2 + 1, M4); M4.compose(V.set(l[0] + l[2] * 2.2, 7.0, l[1] + l[3] * 2.2), Q, S.set(.7, .12, .7)); headI.setMatrixAt(i, M4); });
   city.add(poleI, headI);
+  // KayKit fire hydrants at the curb beside every third lamp
+  if (MDL.hydrant) {
+    const hg = bakedGeo(MDL.hydrant, { height: .9 }, { lift: .3 }), spots = lamps.filter((_, i) => i % 3 === 1);
+    const hI = new THREE.InstancedMesh(hg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .6 }), spots.length);
+    spots.forEach((l, i) => { M4.makeRotationY(rng() * 6); M4.setPosition(l[0] + l[3] * 3 - l[2] * .2, .18, l[1] + l[2] * 3 - l[3] * .2); hI.setMatrixAt(i, M4); });
+    city.add(hI);
+  }
   // light pools under the lamps so the street reads at night
   const poolTex = canvasTex(64, 64, (g, w) => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,190,110,.55)'); gr.addColorStop(1, 'rgba(255,190,110,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, w); });
   const poolI = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), lamps.length);
@@ -659,7 +767,10 @@ function buildCity() {
   const pr = { x1: AVE[PARK.i] + AW, x2: AVE[PARK.i + 1] - AW, z1: ST[PARK.j0] + SW, z2: ST[PARK.j1 + 1] - SW };
   trees = [];
   for (let k = 0; k < 40; k++) { const x = r(pr.x1 + 3, pr.x2 - 3), z = r(pr.z1 + 3, pr.z2 - 3); if (Math.abs(z - ST[PARK.j0 + 1]) < SW + 2) continue; if (Math.hypot(x - 105, z - (ST[PARK.j0] + SW + 14)) < 9 || Math.hypot(x - 105, z - (ST[PARK.j1 + 1] - SW - 14)) < 9) continue; if (Math.abs(x - 105) < 7) continue; trees.push({ x, z, r: .5 }); }
-  for (const t of trees) { const g = new THREE.Group(); g.position.set(t.x, 0, t.z); bx(g, .4, 3, .4, mat(0x3a2a1a), 0, 0, 0); const c = new THREE.Mesh(G.sph, mat(0x1f4a24, { roughness: 1 })); c.scale.set(2.4, 2.2, 2.4); c.position.y = 4.2; g.add(c); city.add(g); }
+  for (const t of trees) {
+    if (MDL.tree) { const g = fitClone(MDL.tree, { height: rng() * 1.5 + 5.5 }); recolor(g, { Tree_Green: { color: 0x1f4a24 } }); g.position.set(t.x, 0, t.z); g.rotation.y = rng() * 6; city.add(g); continue; }
+    const g = new THREE.Group(); g.position.set(t.x, 0, t.z); bx(g, .4, 3, .4, mat(0x3a2a1a), 0, 0, 0); const c = new THREE.Mesh(G.sph, mat(0x1f4a24, { roughness: 1 })); c.scale.set(2.4, 2.2, 2.4); c.position.y = 4.2; g.add(c); city.add(g);
+  }
   const arch = new THREE.Group(); arch.position.set(105, 0, ST[PARK.j0] + SW + 3); bx(arch, 1.6, 9, 1.6, mat(0xd8d2c4), -5, 0, 0); bx(arch, 1.6, 9, 1.6, mat(0xd8d2c4), 5, 0, 0); bx(arch, 11.6, 2.2, 1.8, mat(0xd8d2c4), 0, 9, 0); city.add(arch);
   trees.push({ x: 100, z: arch.position.z, r: 1 }, { x: 110, z: arch.position.z, r: 1 });
   rails = []; kickers = [];
@@ -682,7 +793,7 @@ function buildCity() {
   for (const [a, b] of subSpots) { const x = AVE[a] + AW + 2, z = ST[b] + SW + 2; const g = new THREE.Group(); g.position.set(x, 0, z); bx(g, 2.2, .9, .1, mat(0x1a5a2a), 0, 0, -1.2); bx(g, .1, .9, 2.4, mat(0x1a5a2a), -1.1, 0, 0); bx(g, .1, .9, 2.4, mat(0x1a5a2a), 1.1, 0, 0); for (const sx of [-1.1, 1.1]) { bx(g, .1, 2.2, .1, mat(0x1a5a2a), sx, 0, -1.2); const gl = new THREE.Mesh(G.sph, glow(0x39ff7a, 2)); gl.scale.setScalar(.25); gl.position.set(sx, 2.4, -1.2); g.add(gl); } const hole = new THREE.Mesh(new THREE.PlaneGeometry(2, 2.2), new THREE.MeshBasicMaterial({ color: 0x000000 })); hole.rotation.x = -Math.PI / 2; hole.position.y = .2; g.add(hole); city.add(g); subways.push({ x, z }); }
   // payphones, for the Phantom Phreak
   phones = [];
-  for (let k = 0; k < 18; k++) { const a = Math.floor(rng() * (AVE.length - 1)), b = Math.floor(rng() * (ST.length - 1)); if (a === PARK.i && b >= PARK.j0 && b <= PARK.j1) continue; const x = AVE[a] + AW + 1.2, z = (ST[b] + ST[b + 1]) / 2 + r(-6, 6); const g = new THREE.Group(); g.position.set(x, 0, z); bx(g, .7, 2.2, .5, mat(0x5a6a7a, { metalness: .5 }), 0, 0, 0); const sc = new THREE.Mesh(G.box, glow(0x9adfff, 1.4)); sc.scale.set(.05, .3, .35); sc.position.set(.36, 1.6, 0); g.add(sc); city.add(g); phones.push({ x: x + 1, z, light: sc }); }
+  for (let k = 0; k < 18; k++) { const a = Math.floor(rng() * (AVE.length - 1)), b = Math.floor(rng() * (ST.length - 1)); if (a === PARK.i && b >= PARK.j0 && b <= PARK.j1) continue; const x = AVE[a] + AW + 1.2, z = (ST[b] + ST[b + 1]) / 2 + r(-6, 6); const g = new THREE.Group(); g.position.set(x, 0, z); if (MDL.payphone) { const ph = fitClone(MDL.payphone, { height: 2.3 }); ph.rotation.y = -Math.PI / 2; g.add(ph); } else bx(g, .7, 2.2, .5, mat(0x5a6a7a, { metalness: .5 }), 0, 0, 0); const sc = new THREE.Mesh(G.box, glow(0x9adfff, 1.4)); sc.scale.set(.05, .3, .35); sc.position.set(.36, 1.6, 0); g.add(sc); city.add(g); phones.push({ x: x + 1, z, light: sc }); }
   // steam from manholes
   vents = []; for (let k = 0; k < 16; k++) { const onAve = rng() < .5, x = onAve ? pick(AVE) + r(-4, 4) : r(BOUND.x1 + 20, BOUND.x2 - 20), z = onAve ? r(BOUND.z1 + 20, BOUND.z2 - 20) : pick(ST) + r(-3, 3); vents.push({ x, z }); const mh = new THREE.Mesh(new THREE.CircleGeometry(.7, 16), mat(0x2a2a2e, { metalness: .6 })); mh.rotation.x = -Math.PI / 2; mh.position.set(x, .03, z); city.add(mh); }
   // Cyberdelia: the crew's club and drop point
@@ -700,10 +811,12 @@ const cabGeo = mergeGeometries([vcBox(1.9, .7, 4.6, 0, .55, 0, 0xf2c21a), vcBox(
 const cabGlow = mergeGeometries([vcBox(.7, .25, .3, 0, 1.58, .2, 0xffe890), vcBox(.4, .14, .05, -.6, .66, -2.31, 0xffffff), vcBox(.4, .14, .05, .6, .66, -2.31, 0xffffff), vcBox(.4, .14, .05, -.6, .66, 2.31, 0xff2020), vcBox(.4, .14, .05, .6, .66, 2.31, 0xff2020)]);
 const cabBody = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .35, metalness: .3 }), cabGlowMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, color: new THREE.Color(2, 2, 2) });
 let cabs = [];
+// the KayKit taxi, nose toward -z like the hand-built cab it replaces
+const CAB = MDL.taxi ? new THREE.Mesh(along(MDL.taxi, 'z', 4.6, { lift: .2 }).all, cabBody) : null;
 function setupCabs() {
   for (const c of cabs) scene.remove(c.g); cabs = [];
   for (let k = 0; k < 30; k++) {
-    const g = new THREE.Group(); g.add(new THREE.Mesh(cabGeo, cabBody), new THREE.Mesh(cabGlow, cabGlowMat)); scene.add(g);
+    const g = new THREE.Group(); g.add(CAB ? CAB.clone() : new THREE.Mesh(cabGeo, cabBody), new THREE.Mesh(cabGlow, cabGlowMat)); scene.add(g);
     const alongZ = k % 2 === 0, li = Math.floor(Math.random() * (alongZ ? AVE.length : ST.length)), dir = li % 2 ? 1 : -1;
     const c = { g, alongZ, dir, line: alongZ ? AVE[li] + dir * 3 : ST[li] - dir * 2.5, u: rand(-200, 200), v: rand(9, 13), base: 0, stunT: 0 }; c.base = c.v; cabs.push(c);
   }

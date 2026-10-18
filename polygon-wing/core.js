@@ -114,11 +114,42 @@
   G.flame = new THREE.ConeGeometry(0.45, 1.6, 5);
   G.flame.rotateX(Math.PI / 2);
 
+  // ---- Quaternius spaceships (Poly Pizza, CC0), shipped as models/<name>.js base64 modules and parsed with the
+  // r128 GLTFLoader. They arrive after the first frame, so every ship is built from the hand-made polygons first
+  // and swapped over once its model is ready.
+  const MDL = {}, waiting = [];
+  const SHIPS = { lancer: { len: 7, rotY: Math.PI }, ally: { len: 7, rotY: Math.PI }, dart: { len: 6, rotY: 0 } };
+  function shipModel(name, tint) {
+    const gl = MDL[name], cfg = SHIPS[name], obj = gl.scene.clone(true);
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj), sz = box.getSize(new THREE.Vector3()), k = cfg.len / Math.max(sz.x, sz.z);
+    obj.scale.multiplyScalar(k); obj.position.set(-(box.min.x + box.max.x) / 2 * k, -(box.min.y + box.max.y) / 2 * k, -(box.min.z + box.max.z) / 2 * k);
+    const pivot = new THREE.Group(); pivot.rotation.y = cfg.rotY; pivot.add(obj);
+    obj.traverse((o) => { if (!o.isMesh) return; o.material = o.material.clone(); o.material.flatShading = true; if (tint && o.material.name === 'White') o.material.color.set(tint); o.material.needsUpdate = true; });
+    return pivot;
+  }
+  function useModel(g, name, tint) {
+    if (!MDL[name]) { waiting.push([g, name, tint]); return; }
+    for (const c of g.children) if (c !== g.userData.flame) c.visible = false;
+    g.add(shipModel(name, tint));
+  }
+  if (THREE.GLTFLoader) {
+    const loader = new THREE.GLTFLoader();
+    Promise.all(Object.keys(SHIPS).map(async (n) => {
+      try {
+        const { default: b64 } = await import('./models/' + n + '.js');
+        const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+        MDL[n] = await new Promise((res, rej) => loader.parse(u.buffer, '', res, rej));
+      } catch (e) { console.warn('model failed to load:', n, e && e.message); }
+    })).then(() => { const w = waiting.splice(0); for (const [g, n, t] of w) if (MDL[n]) useModel(g, n, t); });
+  }
+
   SF.makeLancer = function (wingColor) {
     const g = new THREE.Group();
     part(g, G.body, C.hull);
     part(g, G.wings, wingColor || C.wing);
     part(g, G.glass, C.glass);
+    useModel(g, wingColor ? 'ally' : 'lancer', wingColor ? null : 0xdfe6ee);
     const flame = part(g, G.flame, C.glow, true);
     flame.position.set(0, 0.15, 3.1);
     g.userData.flame = flame;
@@ -129,7 +160,7 @@
   G.dart = poly([[0, 0, 3], [-2.6, 0, -1.6], [2.6, 0, -1.6], [0, 1.1, -1], [0, -0.6, -1], [0, 0, -2.2]],
     [[0, 1, 3], [0, 2, 3], [0, 1, 4], [0, 2, 4], [1, 3, 5], [2, 3, 5], [1, 4, 5], [2, 4, 5]]);
   G.dartFin = poly([[-2.6, 0, -1.6], [-3.1, 1.4, -2.4], [-2.2, 0, -2.4], [2.6, 0, -1.6], [3.1, 1.4, -2.4], [2.2, 0, -2.4]], [[0, 1, 2], [3, 4, 5]]);
-  SF.makeDart = () => { const g = new THREE.Group(); part(g, G.dart, C.enemy); part(g, G.dartFin, C.enemyTrim); return g; };
+  SF.makeDart = () => { const g = new THREE.Group(); part(g, G.dart, C.enemy); part(g, G.dartFin, C.enemyTrim); useModel(g, 'dart'); return g; };
 
   G.spin = new THREE.OctahedronGeometry(2.3, 0);
   G.spinRing = new THREE.TorusGeometry(3.1, 0.35, 3, 6);

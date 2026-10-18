@@ -6,8 +6,9 @@ const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module
 const out = process.argv[2] || 'dist/rc-pro-am-3d.html';
 const js = execFileSync('npx', ['--yes', 'esbuild@0.24.0', 'src/main.js', '--bundle', '--format=esm', '--minify', '--external:three'], { encoding: 'utf8' });
 if (js.includes('</script')) throw new Error('bundle contains </script');
+// three and its addons (the GLTFLoader for the scenery models) resolve through an import map to jsDelivr
+const IMPORTMAP = `<script type="importmap">{"imports":{"three":"${THREE_URL}","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>\n`;
 const bundle = js
-  .replaceAll('from"three"', `from"${THREE_URL}"`)
   .replaceAll("'NINTENDO'", "'SUPERCAR'")
   .replaceAll('"NINTENDO"', '"SUPERCAR"')
   .replaceAll('NINTENDO! SUPER TRUCK!', 'SUPERCAR! SUPER TRUCK!');
@@ -19,7 +20,7 @@ let html = readFileSync('index.html', 'utf8')
   .replace(/<\/?body>\s*/gi, '')
   .replace(/<meta [^>]*>\s*/gi, '')
   .replace(/<script type="importmap">[\s\S]*?<\/script>\s*/, '')
-  .replace('<script type="module" src="./src/main.js"></script>', () => `<script type="module">\n${bundle}</script>`);
+  .replace('<script type="module" src="./src/main.js"></script>', () => `${IMPORTMAP}<script type="module">\n${bundle}</script>`);
 
 // Shareable build: an unbranded tribute rather than the trademarked name.
 const REBRAND = [

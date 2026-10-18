@@ -320,9 +320,11 @@ body.touch #prompt kbd{display:none}
     <button class="btn alt" id="lbViewClose" type="button">Close</button>
   </div>
 </div>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const $ = id => document.getElementById(id);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -688,8 +690,53 @@ const TOYS = {
 const ITEM_TYPES = ['yarn', 'mouse', 'feather', 'laser', 'box', 'catnip', 'tuna', 'bell'];
 
 /* ================= ITEM MODELS ================= */
+// ---------- models ----------
+// Low-poly models from Poly Pizza (credits in the README). Each ships as models/<name>.js, a module wrapping
+// the GLB in base64 (artifacts do not serve .glb); textures load through image elements so the artifact
+// sandbox allows them. Anything that fails to load leaves the hand-built geometry in place.
+async function loadModel(loader, name) {
+  const { default: b64 } = await import(`./models/${name}.js`);
+  const s = atob(b64), bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return loader.parseAsync(bytes.buffer, '');
+}
+async function loadModels(names) {
+  const loader = new GLTFLoader(), out = {};
+  loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  await Promise.all(names.map(async n => { try { out[n] = await loadModel(loader, n); } catch (e) { console.warn('model failed to load:', n, e && e.message); } }));
+  return out;
+}
+// a copy of a model standing on its own origin, centred, scaled so one dimension hits a target
+function fitClone(gltf, size, opts = {}) {
+  const skinned = opts.skinned ?? gltf.animations.length > 0;
+  const obj = skinned ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+  if (opts.rotY) obj.rotation.y = opts.rotY;
+  obj.updateMatrixWorld(true);
+  obj.traverse(o => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  const box = new THREE.Box3().setFromObject(obj, true), sz = box.getSize(new THREE.Vector3());
+  const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+  obj.scale.multiplyScalar(k);
+  obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse(o => { if (o.isMesh) { o.castShadow = opts.shadow !== false; o.receiveShadow = true; if (o.isSkinnedMesh) o.frustumCulled = false; } });
+  const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); g.userData.root = obj;
+  return g;
+}
+// repaint materials by name: recolor(g, { Main: { color: 0xff0000 } })
+const recolor = (g, map) => g.traverse(o => { if (!o.isMesh) return; const ms = [].concat(o.material).map(m => { const c = map[m.name] || map['*']; if (!c) return m; const n = m.clone(); for (const k in c) { if (n[k] && n[k].isColor) n[k].set(c[k]); else n[k] = c[k]; } return n; }); o.material = ms.length === 1 ? ms[0] : ms; });
+// an animation mixer with named actions: anim(g, gltf, ['Run', 'Idle'])
+function anim(g, gltf, names) {
+  const mixer = new THREE.AnimationMixer(g.userData.root), acts = {};
+  for (const n of names) { const c = gltf.animations.find(a => a.name === n || a.name.endsWith('|' + n)); if (c) { acts[n] = mixer.clipAction(c); } }
+  return { mixer, acts, play(n, fade = .2) { const a = acts[n]; if (!a || this.cur === a) return; a.reset().fadeIn(fade).play(); if (this.cur) this.cur.fadeOut(fade); this.cur = a; } };
+}
+const MDL = await loadModels(['sofa', 'bed', 'yarn', 'mouse', 'tuna', 'box']);
+// toys and treats from Poly Pizza, sized like the hand-built ones they replace
+const ITEM_MODELS = { yarn: { width: .3 }, mouse: { length: .38 }, tuna: { width: .24 }, box: { width: .55 } };
+// place a model in the house, recoloured, keeping the old geometry's footprint
+function furnish(name, size, x, z, rotY, tint) { const m = fitClone(MDL[name], size, { rotY }); if (tint) recolor(m, tint); m.position.set(x, 0, z); H.add(m); return m; }
 function buildItem(type) {
   const g = new THREE.Group();
+  if (ITEM_MODELS[type] && MDL[type]) { g.add(fitClone(MDL[type], ITEM_MODELS[type])); return g; }
   switch (type) {
     case 'yarn': part(g, G.sph, 0xd9485a, .14, .14, .14, 0, .14, 0); for (let i = 0; i < 3; i++) { const t = part(g, G.tor, 0xb02f42, .135, .135, .1, 0, .14, 0); t.rotation.set(i * 1.1, i * .7, 0); } part(g, G.cyl, 0xd9485a, .012, .3, .012, .16, .02, .08).rotation.set(Math.PI / 2, 0, .7); break;
     case 'mouse': part(g, G.sph, 0x9a9aa6, .08, .065, .13, 0, .065, 0); part(g, G.sph, 0xf2a0b0, .035, .035, .012, -.05, .12, .07); part(g, G.sph, 0xf2a0b0, .035, .035, .012, .05, .12, .07); part(g, G.sph, 0x222222, .012, .012, .012, 0, .07, .13); part(g, G.cyl, 0x7a7a86, .01, .22, .01, 0, .04, -.22).rotation.x = Math.PI / 2; break;
@@ -743,8 +790,12 @@ function buildHouse() {
   // ---- living room
   rug(-7.4, 4.2, 3.6, 3.8, 'rugA');
   boxB(H, .6, .55, 2.4, 0x6e4b33, -9.55, 0, 4.2); boxB(H, .1, .85, 1.8, 0x1c1e24, -9.6, .6, 4.2); boxB(H, .02, .72, 1.65, 0x2c4a6e, -9.54, .67, 4.2, { cast: false, mat: { emissive: 0x16385a, roughness: .2 } }); solid(-9.55, 4.2, .6, 2.4);
+  if (MDL.sofa) furnish('sofa', { length: 3.2 }, -5.4, 4.2, -Math.PI / 2, { carpet: { color: 0x5b7fb5 } });
+  else {
   boxB(H, 1.1, .42, 3.2, 0x5b7fb5, -5.4, 0, 4.2); boxB(H, .3, .85, 3.2, 0x4a6a9c, -5.0, 0, 4.2); boxB(H, 1.1, .62, .28, 0x4a6a9c, -5.4, 0, 2.74); boxB(H, 1.1, .62, .28, 0x4a6a9c, -5.4, 0, 5.66);
-  boxB(H, .75, .14, 1.28, 0x6a8fc4, -5.55, .42, 3.55); boxB(H, .75, .14, 1.28, 0x6a8fc4, -5.55, .42, 4.85); solid(-5.4, 4.2, 1.1, 3.2);
+  boxB(H, .75, .14, 1.28, 0x6a8fc4, -5.55, .42, 3.55); boxB(H, .75, .14, 1.28, 0x6a8fc4, -5.55, .42, 4.85);
+  }
+  solid(-5.4, 4.2, 1.1, 3.2);
   boxB(H, .8, .07, 1.6, 0x9a6a45, -7.4, .38, 4.2); for (const [a, b] of [[-.33, -.72], [.33, -.72], [-.33, .72], [.33, .72]]) boxB(H, .06, .38, .06, 0x7a5235, -7.4 + a, 0, 4.2 + b); solid(-7.4, 4.2, .8, 1.6);
   boxB(H, 1.0, .42, .95, 0xc76b4c, -3, 0, 6.2); boxB(H, 1.0, .85, .25, 0xb05a3e, -3, 0, 6.58); boxB(H, .18, .62, .95, 0xb05a3e, -3.46, 0, 6.2); boxB(H, .18, .62, .95, 0xb05a3e, -2.54, 0, 6.2); solid(-3, 6.2, 1.1, 1.0);
   bookshelf(.8, 6.6, 1.8, .5, 1.4, true); solid(.8, 6.6, 1.8, .5);
@@ -767,7 +818,9 @@ function buildHouse() {
   part(H, G.cyl, 0xd9485a, .14, .06, .14, 8.5, .03, 1.5); part(H, G.cyl, 0x8a5a3b, .11, .02, .11, 8.5, .065, 1.5, { cast: false }); part(H, G.cyl, 0x3d8fe0, .14, .06, .14, 8.9, .03, 1.5); part(H, G.cyl, 0x9cd0f0, .11, .02, .11, 8.9, .065, 1.5, { cast: false });
   // ---- bedroom
   rug(-5.2, -3.6, 2.4, 1.6, 'rugB');
-  boxB(H, 2.2, .35, 3.0, 0x8a5a3b, -7.5, 0, -5.4); boxB(H, 2.1, .2, 2.85, 0xffffff, -7.5, .35, -5.35); boxB(H, 2.16, .08, 1.9, 0x7fb0d8, -7.5, .52, -4.85); boxB(H, .8, .14, .45, 0xf7f7f7, -8.0, .55, -6.45); boxB(H, .8, .14, .45, 0xf7f7f7, -7.0, .55, -6.45); boxB(H, 2.2, .95, .12, 0x7a4a2e, -7.5, 0, -6.86); solid(-7.5, -5.4, 2.2, 3.0);
+  if (MDL.bed) furnish('bed', { length: 3.0 }, -7.5, -5.4, Math.PI, { carpet: { color: 0x7fb0d8 } });
+  else { boxB(H, 2.2, .35, 3.0, 0x8a5a3b, -7.5, 0, -5.4); boxB(H, 2.1, .2, 2.85, 0xffffff, -7.5, .35, -5.35); boxB(H, 2.16, .08, 1.9, 0x7fb0d8, -7.5, .52, -4.85); boxB(H, .8, .14, .45, 0xf7f7f7, -8.0, .55, -6.45); boxB(H, .8, .14, .45, 0xf7f7f7, -7.0, .55, -6.45); boxB(H, 2.2, .95, .12, 0x7a4a2e, -7.5, 0, -6.86); }
+  solid(-7.5, -5.4, 2.2, 3.0);
   boxB(H, .7, .6, .6, 0x9a6a45, -9.2, 0, -6.4); part(H, G.cyl, 0xf2e3c0, .12, .25, .12, -9.2, .72, -6.45); part(H, G.cone, 0xf2c94c, .2, .2, .2, -9.2, .92, -6.45, { mat: { emissive: 0x6a5010 } }); solid(-9.2, -6.4, .7, .6);
   boxB(H, 1.6, 1.0, .6, 0xb07a4e, -4, 0, -6.6); for (let i = 0; i < 3; i++) boxB(H, 1.4, .02, .02, 0x7a5235, -4, .25 + i * .3, -6.29, { cast: false }); solid(-4, -6.6, 1.6, .6);
   boxB(H, .7, 1.5, 1.6, 0x8a5a3b, -9.6, 0, -2.8); boxB(H, .02, 1.3, .02, 0x5a3a22, -9.24, .1, -2.8, { cast: false }); solid(-9.6, -2.8, .7, 1.6);

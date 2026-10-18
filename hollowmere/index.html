@@ -411,9 +411,39 @@ html,body{height:100%;margin:0;background:var(--void);color:var(--bone);overflow
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 (function(){
 'use strict';
+// ---------- models ----------
+// Low-poly models from Poly Pizza (credits in the README). Each ships as models/<name>.js, a module wrapping the
+// GLB in base64 (artifacts do not serve .glb), parsed with the r128 GLTFLoader. They load in the background;
+// anything not loaded yet (or that fails) keeps its hand-built stand-in.
+const MDL = {};
+function loadModels(names) {
+  if (!THREE.GLTFLoader) return Promise.resolve();
+  const loader = new THREE.GLTFLoader();
+  if (loader.register) loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  return Promise.all(names.map(async n => {
+    try {
+      const { default: b64 } = await import('./models/' + n + '.js');
+      const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+      MDL[n] = await new Promise((res, rej) => loader.parse(u.buffer, '', res, rej));
+    } catch (e) { console.warn('model failed to load:', n, e && e.message); }
+  }));
+}
+// a static copy of a model, standing on its own origin, centred, scaled so one dimension hits a target
+function fitClone(gltf, size) {
+  const obj = gltf.scene.clone(true); obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj), sz = box.getSize(new THREE.Vector3());
+  const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+  obj.scale.multiplyScalar(k); obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); return g;
+}
+loadModels(['grave', 'gravestone', 'grave-broken', 'coffin', 'skull', 'ribcage']);
+// KayKit graveyard pieces, recoloured toward the crypt's stone and wood
+const kk = (name, size, rot = 0) => { const m = fitClone(MDL[name], size); m.rotation.y = rot; return m; };
 const $=id=>document.getElementById(id);
 const TAU=Math.PI*2;
 const rand=(a,b)=>a+Math.random()*(b-a);
@@ -862,9 +892,11 @@ function buildProp(p){
   const light=(y,color,power)=>candles.push({x:p.i+.5,y,z:p.j+.5,color,power,ph:Math.random()*9});
   switch(p.type){
     case'tomb':{g.rotation.set(0,rand(-.2,.2)+(Math.random()<.5?0:Math.PI/2),rand(-.14,.14));
+      if(MDL.grave&&MDL.gravestone){g.add(kk(Math.random()<.5?'grave':'gravestone',{height:rand(.75,.95)}));break;}
       part(GEO.box,MAT.stone,.56,.72,.14,0,.36,0,g);const top=part(GEO.cyl,MAT.stone,.28,.14,.28,0,.72,0,g);top.rotation.x=Math.PI/2;
       part(GEO.box,MAT.stoneDark,.7,.1,.3,0,.05,0,g);break;}
     case'cross':{g.rotation.set(rand(-.1,.1),rand(0,TAU),rand(-.18,.18));
+      if(MDL['grave-broken']){g.add(kk('grave-broken',{height:rand(.8,1.05)}));break;}
       part(GEO.box,MAT.stone,.12,1.05,.12,0,.52,0,g);part(GEO.box,MAT.stone,.52,.12,.12,0,.78,0,g);part(GEO.box,MAT.stoneDark,.4,.12,.4,0,.06,0,g);break;}
     case'tree':{const tr=part(GEO.cyl,MAT.bark,.12,2.4,.12,0,1.2,0,g);tr.rotation.z=rand(-.1,.1);
       for(let k=0;k<5;k++){const b=new THREE.Group();b.position.set(0,rand(1.2,2.3),0);b.rotation.set(rand(.6,1.2),k*TAU/5+rand(-.3,.3),0,'YXZ');g.add(b);part(GEO.cyl,MAT.bark,.04,rand(.8,1.4),.04,0,.5,0,b);}
@@ -877,10 +909,11 @@ function buildProp(p){
       part(GEO.sphere,MAT.bone,.1,.11,.1,0,.96,0,g);candle(g,-.5,-.2,.22,.85);candle(g,.5,-.1,.3,.85);light(1.3,0xff6a2a,1.4);break;}
     case'candelabra':{part(GEO.cyl,MAT.iron,.03,1.4,.03,0,.7,0,g);part(GEO.cyl,MAT.iron,.18,.04,.18,0,.02,0,g);part(GEO.box,MAT.iron,.6,.03,.03,0,1.4,0,g);
       for(const x of[-.28,0,.28])candle(g,x,0,.18,1.42);glow(0xff9a4a,1.2,g,0,1.65,0,.6);light(1.7,0xff8a3a,1.9);break;}
-    case'coffin':{g.rotation.y=Math.random()<.5?0:Math.PI/2;part(GEO.box,MAT.wood,.6,.36,1.3,0,.18,0,g);
+    case'coffin':{g.rotation.y=Math.random()<.5?0:Math.PI/2;if(MDL.coffin){g.add(kk('coffin',{length:1.3}));break;}part(GEO.box,MAT.wood,.6,.36,1.3,0,.18,0,g);
       const lid=part(GEO.box,MAT.wood,.64,.06,1.34,rand(-.15,.15),.39,rand(-.2,.2),g);lid.rotation.y=rand(-.3,.3);
       if(Math.random()<.4){const l=part(GEO.box,MAT.wood,.64,.06,1.34,.45,.2,.1,g);l.rotation.z=1.1;lid.visible=false;part(GEO.box,MAT.voidM,.5,.02,1.2,0,.365,0,g);} break;}
-    case'bones':{g.position.set(p.i+rand(.15,.85),0,p.j+rand(.15,.85));for(let k=0;k<randi(2,5);k++){const b=part(GEO.cyl,MAT.bone,.025,rand(.2,.4),.025,rand(-.2,.2),.03,rand(-.2,.2),g);b.rotation.set(Math.PI/2,0,rand(0,TAU));}
+    case'bones':{g.position.set(p.i+rand(.15,.85),0,p.j+rand(.15,.85));
+      if(MDL.skull&&MDL.ribcage){g.add(kk(Math.random()<.5?'skull':'ribcage',{width:rand(.35,.55)},rand(0,TAU)));if(Math.random()<.4){const s2=kk('skull',{width:.22},rand(0,TAU));s2.position.set(rand(-.25,.25),0,rand(-.25,.25));g.add(s2);}break;}for(let k=0;k<randi(2,5);k++){const b=part(GEO.cyl,MAT.bone,.025,rand(.2,.4),.025,rand(-.2,.2),.03,rand(-.2,.2),g);b.rotation.set(Math.PI/2,0,rand(0,TAU));}
       if(Math.random()<.5)part(GEO.sphere,MAT.bone,.09,.09,.1,rand(-.15,.15),.08,rand(-.15,.15),g);break;}
     case'candles':{for(let k=0;k<randi(4,7);k++)candle(g,rand(-.3,.3),rand(-.3,.3),rand(.08,.3));part(GEO.sphere,MAT.bone,.1,.1,.11,0,.09,0,g);glow(0xff9a4a,1,g,0,.35,0,.55);light(.55,0xff7a30,1.6);break;}
   }

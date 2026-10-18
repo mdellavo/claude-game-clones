@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MDL, bakedGeo } from './models.js';
 import { grassTexture, roadTexture, checkerTexture, stripeTexture, textSprite } from './textures.js';
 
 function rand(seed) {
@@ -242,11 +243,11 @@ export function buildWorld(track, theme) {
     const mat = new THREE.MeshLambertMaterial({ color: theme.tree });
     const cac = new THREE.InstancedMesh(cGeo, mat, spots.length);
     const arms = new THREE.InstancedMesh(armGeo, mat, spots.length);
-    const rockGeo = new THREE.DodecahedronGeometry(1.2, 0);
-    const rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshLambertMaterial({ color: 0xa1887f, flatShading: true }), spots.length);
+    const rockGeo = MDL.rock ? bakedGeo(MDL.rock, { width: 2.6 }, { lift: .8 }) : new THREE.DodecahedronGeometry(1.2, 0);
+    const rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshLambertMaterial(MDL.rock ? { color: 0xe8c8b0, vertexColors: true, flatShading: true } : { color: 0xa1887f, flatShading: true }), spots.length);
     let ci = 0, ri = 0;
     spots.forEach(([x, z, s, rot], i) => {
-      if (i % 3 === 0) { place(rocks, ri++, x, 0.4 * s, z, s * 1.4, rot); return; }
+      if (i % 3 === 0) { place(rocks, ri++, x, MDL.rock ? -0.2 * s : 0.4 * s, z, s * 1.4, rot); return; }
       place(cac, ci, x, 2 * s, z, s, rot);
       mtx.compose(v.set(x + Math.cos(rot) * 0.8 * s, 2.4 * s, z + Math.sin(rot) * 0.8 * s), quat.setFromAxisAngle(up, rot), scl.set(s, s, s));
       arms.setMatrixAt(ci, mtx);
@@ -254,6 +255,13 @@ export function buildWorld(track, theme) {
     });
     cac.count = ci; arms.count = ci; rocks.count = ri;
     for (const m of [cac, arms, rocks]) { m.castShadow = true; m.receiveShadow = true; group.add(m); }
+  } else if (MDL[theme.snowy ? 'pine-snow' : 'tree']) {
+    // Quaternius trees, one instanced mesh, shaded toward each track's palette
+    const geo = bakedGeo(MDL[theme.snowy ? 'pine-snow' : 'tree'], { height: 7 }, { lift: .4 });
+    const trees = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), spots.length);
+    const tint = new THREE.Color(theme.tree).lerp(new THREE.Color(0xffffff), theme.snowy ? .85 : .55).multiplyScalar(1.4), c = new THREE.Color();
+    spots.forEach(([x, z, s, rot], i) => { place(trees, i, x, 0, z, s, rot); trees.setColorAt(i, c.copy(tint).multiplyScalar(.85 + ((i * 7) % 5) * .06)); });
+    trees.castShadow = true; trees.receiveShadow = true; group.add(trees);
   } else {
     const trunkGeo = new THREE.CylinderGeometry(0.3, 0.4, 1.6, 6);
     const leafGeo = new THREE.ConeGeometry(2, 4.5, 7);

@@ -2076,6 +2076,49 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+// ---------- models ----------
+// Low-poly models from Poly Pizza (credits in the README). Each ships as models/<name>.js, a module wrapping
+// the GLB in base64 (artifacts do not serve .glb); textures load through image elements so the artifact
+// sandbox allows them. Anything that fails to load leaves the hand-built geometry in place.
+async function loadModel(loader, name) {
+  const { default: b64 } = await import(`./models/${name}.js`);
+  const s = atob(b64), bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return loader.parseAsync(bytes.buffer, '');
+}
+async function loadModels(names) {
+  const loader = new GLTFLoader(), out = {};
+  loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  await Promise.all(names.map(async n => { try { out[n] = await loadModel(loader, n); } catch (e) { console.warn('model failed to load:', n, e && e.message); } }));
+  return out;
+}
+// a copy of a model standing on its own origin, centred, scaled so one dimension hits a target
+function fitClone(gltf, size, opts = {}) {
+  const skinned = opts.skinned ?? gltf.animations.length > 0;
+  const obj = skinned ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+  if (opts.rotY) obj.rotation.y = opts.rotY;
+  obj.updateMatrixWorld(true);
+  obj.traverse(o => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  const box = new THREE.Box3().setFromObject(obj, true), sz = box.getSize(new THREE.Vector3());
+  const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+  obj.scale.multiplyScalar(k);
+  obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse(o => { if (o.isMesh) { o.castShadow = opts.shadow !== false; o.receiveShadow = true; if (o.isSkinnedMesh) o.frustumCulled = false; } });
+  const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); g.userData.root = obj;
+  return g;
+}
+// repaint materials by name: recolor(g, { Main: { color: 0xff0000 } })
+const recolor = (g, map) => g.traverse(o => { if (!o.isMesh) return; const ms = [].concat(o.material).map(m => { const c = map[m.name] || map['*']; if (!c) return m; const n = m.clone(); for (const k in c) { if (n[k] && n[k].isColor) n[k].set(c[k]); else n[k] = c[k]; } return n; }); o.material = ms.length === 1 ? ms[0] : ms; });
+// an animation mixer with named actions: anim(g, gltf, ['Run', 'Idle'])
+function anim(g, gltf, names) {
+  const mixer = new THREE.AnimationMixer(g.userData.root), acts = {};
+  for (const n of names) { const c = gltf.animations.find(a => a.name === n || a.name.endsWith('|' + n)); if (c) { acts[n] = mixer.clipAction(c); } }
+  return { mixer, acts, play(n, fade = .2) { const a = acts[n]; if (!a || this.cur === a) return; a.reset().fadeIn(fade).play(); if (this.cur) this.cur.fadeOut(fade); this.cur = a; } };
+}
+const MDL = await loadModels(['house', 'inn']);
 
 const stage = document.getElementById('stage');
 const glCanvas = document.createElement('canvas');
@@ -2400,7 +2443,11 @@ function boot() {
   }
   function landmark(c, x, y, lights) {
     const g = new THREE.Group(); g.position.set(x, 0, y);
-    if (c === 'A' || c === 'V') {
+    if ((c === 'A' || c === 'V') && MDL.house && MDL.inn) {
+      // Quaternius fantasy cottages and an inn
+      for (const [m, hx, hz, sz, ry] of [['inn', -0.2, -0.12, 0.62, 0.3], ['house', 0.26, 0.16, 0.42, -0.5], ['house', -0.1, 0.34, 0.32, 1.2]]) { const h = fitClone(MDL[m], { width: sz }); h.position.set(hx, 0, hz); h.rotation.y = ry; g.add(h); }
+      lights.push({ x, y: 0.6, z: y + 0.4, color: 0xffa050, i: 1.2 });
+    } else if (c === 'A' || c === 'V') {
       const roof = c === 'A' ? M.roofRed : M.roofTeal;
       g.add(house(-0.22, -0.15, 1, roof), house(0.24, 0.12, 0.85, roof), house(-0.05, 0.32, 0.6, roof));
       lights.push({ x, y: 0.6, z: y + 0.4, color: 0xffa050, i: 1.2 });

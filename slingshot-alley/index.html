@@ -338,6 +338,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -471,6 +473,46 @@ TEX.gold = balloonIcon('#ffc23a', g => {
   g.closePath(); g.fill();
 });
 
+// ---------- models ----------
+// Low-poly models from Poly Pizza (credits in the README). Each ships as models/<name>.js, a module wrapping
+// the GLB in base64 (artifacts do not serve .glb); textures load through image elements so the artifact
+// sandbox allows them. Anything that fails to load leaves the hand-built geometry in place.
+async function loadModel(loader, name) {
+  const { default: b64 } = await import(`./models/${name}.js`);
+  const s = atob(b64), bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return loader.parseAsync(bytes.buffer, '');
+}
+async function loadModels(names) {
+  const loader = new GLTFLoader(), out = {};
+  loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  await Promise.all(names.map(async n => { try { out[n] = await loadModel(loader, n); } catch (e) { console.warn('model failed to load:', n, e && e.message); } }));
+  return out;
+}
+// a copy of a model standing on its own origin, centred, scaled so one dimension hits a target
+function fitClone(gltf, size, opts = {}) {
+  const skinned = opts.skinned ?? gltf.animations.length > 0;
+  const obj = skinned ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+  if (opts.rotY) obj.rotation.y = opts.rotY;
+  obj.updateMatrixWorld(true);
+  obj.traverse(o => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  const box = new THREE.Box3().setFromObject(obj, true), sz = box.getSize(new THREE.Vector3());
+  const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+  obj.scale.multiplyScalar(k);
+  obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse(o => { if (o.isMesh) { o.castShadow = opts.shadow !== false; o.receiveShadow = true; if (o.isSkinnedMesh) o.frustumCulled = false; } });
+  const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); g.userData.root = obj;
+  return g;
+}
+// repaint materials by name: recolor(g, { Main: { color: 0xff0000 } })
+const recolor = (g, map) => g.traverse(o => { if (!o.isMesh) return; const ms = [].concat(o.material).map(m => { const c = map[m.name] || map['*']; if (!c) return m; const n = m.clone(); for (const k in c) { if (n[k] && n[k].isColor) n[k].set(c[k]); else n[k] = c[k]; } return n; }); o.material = ms.length === 1 ? ms[0] : ms; });
+// an animation mixer with named actions: anim(g, gltf, ['Run', 'Idle'])
+function anim(g, gltf, names) {
+  const mixer = new THREE.AnimationMixer(g.userData.root), acts = {};
+  for (const n of names) { const c = gltf.animations.find(a => a.name === n || a.name.endsWith('|' + n)); if (c) { acts[n] = mixer.clipAction(c); } }
+  return { mixer, acts, play(n, fade = .2) { const a = acts[n]; if (!a || this.cur === a) return; a.reset().fadeIn(fade).play(); if (this.cur) this.cur.fadeOut(fade); this.cur = a; } };
+}
+const MDL = await loadModels(['duck', 'bear', 'ducky']);
 /* ================= the booth ================= */
 // Player stands at z≈0 behind the counter; the booth runs back to z=-14 between x=±6, roof at y=4.6.
 const BOOTH = { hw: 6, back: -14, roof: 4.6, front: -1.2 };
@@ -515,6 +557,16 @@ function plane(w, h, mat, x, y, z, rx = 0, ry = 0) { const m = new THREE.Mesh(ne
   const front = box(2 * BOOTH.hw, 1.02, .5, M.red, 0, .51, BOOTH.front + .3);
   front.material = [M.red, M.red, M.red, M.red, M.counterFront, M.red];
   box(2 * BOOTH.hw, .05, .05, M.gold, 0, 1.0, BOOTH.front + .6);
+  // prizes: rubber ducks lined up on the counter ends, teddy bears on shelves down both side walls
+  if (MDL.duck || MDL.ducky) for (const s of [-1, 1]) for (let k = 0; k < 3; k++) {
+    const d = fitClone(MDL[(k % 2 && MDL.ducky) ? 'ducky' : 'duck'] || MDL.ducky, { height: .22 });
+    d.position.set(s * (BOOTH.hw - .35 - k * .32), 1.1, BOOTH.front + .3); d.rotation.y = Math.PI + s * .3; scene.add(d);
+  }
+  if (MDL.bear) for (const s of [-1, 1]) for (let k = 0; k < 4; k++) {
+    const z = BOOTH.front - 1.6 - k * 2.6;
+    box(.5, .05, 1.2, M.wood, s * (BOOTH.hw - .25), 2.6, z);
+    const b = fitClone(MDL.bear, { height: .7 }); b.position.set(s * (BOOTH.hw - .3), 2.63, z); b.rotation.y = -s * Math.PI / 2; scene.add(b);
+  }
   // a tray of spare pellets on the counter
   const tray = box(.5, .05, .26, M.wood, -1.6, 1.125, BOOTH.front + .3);
   const peb = new THREE.InstancedMesh(new THREE.SphereGeometry(.03, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd8dde6, roughness: .25, metalness: .2 }), 22);

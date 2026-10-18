@@ -309,9 +309,11 @@ body.touch #dk-fps{bottom:auto;top:calc(84px + env(safe-area-inset-top))}
     <button class="btn" id="lbViewClose" type="button">Close</button>
   </div>
 </div>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const $ = (id) => document.getElementById(id);
 const V3 = THREE.Vector3;
@@ -390,6 +392,46 @@ scene.add(rainbow);
 
 // ------------------------------------------------------------------ islands on the horizon
 const islands = [];
+// ---------- models ----------
+// Low-poly models from Poly Pizza (credits in the README). Each ships as models/<name>.js, a module wrapping
+// the GLB in base64 (artifacts do not serve .glb); textures load through image elements so the artifact
+// sandbox allows them. Anything that fails to load leaves the hand-built geometry in place.
+async function loadModel(loader, name) {
+  const { default: b64 } = await import(`./models/${name}.js`);
+  const s = atob(b64), bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return loader.parseAsync(bytes.buffer, '');
+}
+async function loadModels(names) {
+  const loader = new GLTFLoader(), out = {};
+  loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  await Promise.all(names.map(async n => { try { out[n] = await loadModel(loader, n); } catch (e) { console.warn('model failed to load:', n, e && e.message); } }));
+  return out;
+}
+// a copy of a model standing on its own origin, centred, scaled so one dimension hits a target
+function fitClone(gltf, size, opts = {}) {
+  const skinned = opts.skinned ?? gltf.animations.length > 0;
+  const obj = skinned ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+  if (opts.rotY) obj.rotation.y = opts.rotY;
+  obj.updateMatrixWorld(true);
+  obj.traverse(o => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  const box = new THREE.Box3().setFromObject(obj, true), sz = box.getSize(new THREE.Vector3());
+  const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+  obj.scale.multiplyScalar(k);
+  obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse(o => { if (o.isMesh) { o.castShadow = opts.shadow !== false; o.receiveShadow = true; if (o.isSkinnedMesh) o.frustumCulled = false; } });
+  const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); g.userData.root = obj;
+  return g;
+}
+// repaint materials by name: recolor(g, { Main: { color: 0xff0000 } })
+const recolor = (g, map) => g.traverse(o => { if (!o.isMesh) return; const ms = [].concat(o.material).map(m => { const c = map[m.name] || map['*']; if (!c) return m; const n = m.clone(); for (const k in c) { if (n[k] && n[k].isColor) n[k].set(c[k]); else n[k] = c[k]; } return n; }); o.material = ms.length === 1 ? ms[0] : ms; });
+// an animation mixer with named actions: anim(g, gltf, ['Run', 'Idle'])
+function anim(g, gltf, names) {
+  const mixer = new THREE.AnimationMixer(g.userData.root), acts = {};
+  for (const n of names) { const c = gltf.animations.find(a => a.name === n || a.name.endsWith('|' + n)); if (c) { acts[n] = mixer.clipAction(c); } }
+  return { mixer, acts, play(n, fade = .2) { const a = acts[n]; if (!a || this.cur === a) return; a.reset().fadeIn(fade).play(); if (this.cur) this.cur.fadeOut(fade); this.cur = a; } };
+}
+const MDL = await loadModels(['palm', 'palm-b', 'log', 'rock', 'rock-b', 'turtle', 'jelly']);
 function makeIsland(scale){
   const g = new THREE.Group();
   const sand = new THREE.Mesh(new THREE.CylinderGeometry(70 * scale, 80 * scale, 3, 24), new THREE.MeshLambertMaterial({ color: 0xf3dfa6 }));
@@ -402,7 +444,8 @@ function makeIsland(scale){
   const trunkM = new THREE.MeshLambertMaterial({ color: 0x8a6a45 }), frondM = new THREE.MeshLambertMaterial({ color: 0x3fb46a, side: THREE.DoubleSide });
   for (let i = 0; i < 9; i++){
     const a = R(-.9, .9) + PI / 2, rr = 62 * scale;
-    const palm = makePalm(trunkM, frondM, R(12, 20) * scale); palm.position.set(Math.cos(a) * rr, 0, Math.sin(a) * rr); palm.rotation.y = R(0, TAU); g.add(palm);
+    const pm = MDL[i % 2 ? 'palm-b' : 'palm'];
+    const palm = pm ? fitClone(pm, { height: R(14, 24) * scale }) : makePalm(trunkM, frondM, R(12, 20) * scale); palm.position.set(Math.cos(a) * rr, 0, Math.sin(a) * rr); palm.rotation.y = R(0, TAU); g.add(palm);
   }
   return g;
 }
@@ -653,8 +696,17 @@ const OBS_TYPES = [
   { t: 'jelly', w: 2, r: .85 }, { t: 'kook', w: 2, r: 1.3 }, { t: 'gull', w: 1.6, r: 1.4, air: true },
 ];
 const NAMES = { log: 'Driftwood!', buoy: 'Hit a buoy!', rock: 'Reef rock!', turtle: 'Sorry, turtle!', jelly: 'Jellyfish!', kook: 'Ran over a kook!', gull: 'Seagull strike!' };
+// Poly Pizza stand-ins for the floating hazards; the rest stay hand-built
+const THING_MODELS = { log: [['log'], { length: 3.4 }], rock: [['rock', 'rock-b'], { width: 2.8 }], turtle: [['turtle'], { length: 1.9 }], jelly: [['jelly'], { width: 1.2 }] };
 function makeThing(type){
   const g = new THREE.Group();
+  const tm = THING_MODELS[type], names = tm && tm[0].filter(n => MDL[n]);
+  if (names && names.length){
+    const m = fitClone(MDL[names[(Math.random() * names.length) | 0]], tm[1], { rotY: type === 'log' ? PI / 2 : 0 });
+    if (type === 'rock'){ m.position.y = -.35; m.scale.y *= .8; }
+    if (type === 'jelly'){ m.position.y = -.25; m.traverse(o => { if (o.isMesh){ o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = .8; o.material.emissive && o.material.emissive.set(0x802050); } }); }
+    g.add(m); scene.add(g); return g;
+  }
   if (type === 'log'){
     const m = new THREE.Mesh(new THREE.CylinderGeometry(.34, .38, 3.2, 9), L(0x7a5534)); m.rotation.z = PI / 2; m.position.y = .15; g.add(m);
     const stub = new THREE.Mesh(new THREE.CylinderGeometry(.1, .14, .7, 6), L(0x6a4a2c)); stub.position.set(.6, .5, 0); stub.rotation.z = -.7; g.add(stub);

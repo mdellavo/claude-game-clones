@@ -401,6 +401,8 @@ window.addEventListener('error', () => {
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const $ = id => document.getElementById(id);
 const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -524,6 +526,103 @@ function P(geo, color, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1, rx = 0, ry =
   g.setAttribute('color', new THREE.BufferAttribute(a, 3)); if (g.index) return g; return g;
 }
 function merge(parts) { const g = mergeGeometries(parts.map(p => p.index ? p : p), false); parts.forEach(p => p.dispose()); return g; }
+// ---------- models ----------
+// Low-poly models from Poly Pizza (credits in the README). Each ships as models/<name>.js, a module wrapping
+// the GLB in base64 (artifacts do not serve .glb); textures load through image elements so the artifact
+// sandbox allows them. Anything that fails to load leaves the hand-built geometry in place.
+async function loadModel(loader, name) {
+  const { default: b64 } = await import(`./models/${name}.js`);
+  const s = atob(b64), bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return loader.parseAsync(bytes.buffer, '');
+}
+async function loadModels(names) {
+  const loader = new GLTFLoader(), out = {};
+  loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  await Promise.all(names.map(async n => { try { out[n] = await loadModel(loader, n); } catch (e) { console.warn('model failed to load:', n, e && e.message); } }));
+  return out;
+}
+// a copy of a model standing on its own origin, centred, scaled so one dimension hits a target
+function fitClone(gltf, size, opts = {}) {
+  const skinned = opts.skinned ?? gltf.animations.length > 0;
+  const obj = skinned ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+  if (opts.rotY) obj.rotation.y = opts.rotY;
+  obj.updateMatrixWorld(true);
+  obj.traverse(o => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  const box = new THREE.Box3().setFromObject(obj, true), sz = box.getSize(new THREE.Vector3());
+  const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+  obj.scale.multiplyScalar(k);
+  obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse(o => { if (o.isMesh) { o.castShadow = opts.shadow !== false; o.receiveShadow = true; if (o.isSkinnedMesh) o.frustumCulled = false; } });
+  const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); g.userData.root = obj;
+  return g;
+}
+// repaint materials by name: recolor(g, { Main: { color: 0xff0000 } })
+const recolor = (g, map) => g.traverse(o => { if (!o.isMesh) return; const ms = [].concat(o.material).map(m => { const c = map[m.name] || map['*']; if (!c) return m; const n = m.clone(); for (const k in c) { if (n[k] && n[k].isColor) n[k].set(c[k]); else n[k] = c[k]; } return n; }); o.material = ms.length === 1 ? ms[0] : ms; });
+// an animation mixer with named actions: anim(g, gltf, ['Run', 'Idle'])
+function anim(g, gltf, names) {
+  const mixer = new THREE.AnimationMixer(g.userData.root), acts = {};
+  for (const n of names) { const c = gltf.animations.find(a => a.name === n || a.name.endsWith('|' + n)); if (c) { acts[n] = mixer.clipAction(c); } }
+  return { mixer, acts, play(n, fade = .2) { const a = acts[n]; if (!a || this.cur === a) return; a.reset().fadeIn(fade).play(); if (this.cur) this.cur.fadeOut(fade); this.cur = a; } };
+}
+// bake(gltf, { parts: { name: /material/ }, clip, time, lift }) -> { name: geometry }: the model posed and flattened
+// into plain vertex-coloured triangles (material colour x texture x vertex colour), ready for merging or instancing
+const _texReaders = new Map();
+function texReader(tex) {
+  let r = _texReaders.get(tex); if (r) return r;
+  const img = tex.image, c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data, w = c.width, h = c.height;
+  r = (u, v, out) => { const px = Math.min(w - 1, Math.floor((u - Math.floor(u)) * w)), py = Math.min(h - 1, Math.floor((v - Math.floor(v)) * h)), i = (py * w + px) * 4; return out.setRGB(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255, THREE.SRGBColorSpace); };
+  _texReaders.set(tex, r); return r;
+}
+function bake(gltf, { parts = { all: /.*/ }, clip = null, time = 0, lift = 0 } = {}) {
+  const obj = SkeletonUtils.clone(gltf.scene);
+  if (clip && gltf.animations.length) { const a = gltf.animations.find(x => clip.test(x.name)) || gltf.animations[0]; const mx = new THREE.AnimationMixer(obj); mx.clipAction(a).play(); mx.update(time); }
+  obj.updateMatrixWorld(true);
+  const acc = {}; for (const k in parts) acc[k] = { p: [], c: [] };
+  const v = new THREE.Vector3(), tc = new THREE.Color(), cc = new THREE.Color();
+  obj.traverse(m => {
+    if (!m.isMesh) return;
+    if (m.isSkinnedMesh) m.skeleton.update();
+    const mats = Array.isArray(m.material) ? m.material : [m.material], g = m.geometry, pos = g.attributes.position, uv = g.attributes.uv, vcol = g.attributes.color, idx = g.index;
+    const groups = g.groups.length ? g.groups : [{ start: 0, count: idx ? idx.count : pos.count, materialIndex: 0 }];
+    for (const gr of groups) {
+      const mat = mats[gr.materialIndex] || mats[0], name = mat.name || '';
+      const key = Object.keys(parts).find(k => parts[k].test(name)); if (!key) continue;
+      const out = acc[key], samp = mat.map ? texReader(mat.map) : null;
+      for (let i = gr.start; i < gr.start + gr.count; i++) {
+        const vi = idx ? idx.getX(i) : i;
+        m.getVertexPosition(vi, v).applyMatrix4(m.matrixWorld); out.p.push(v.x, v.y, v.z);
+        tc.copy(mat.color || cc.setRGB(1, 1, 1));
+        if (samp && uv) tc.multiply(samp(uv.getX(vi), uv.getY(vi), cc));
+        if (vcol) tc.multiply(cc.fromBufferAttribute(vcol, vi));
+        if (lift) { const k = 1 - lift * 0.25, f = 1 + lift * 0.2; tc.setRGB(Math.min(1, tc.r ** k * f), Math.min(1, tc.g ** k * f), Math.min(1, tc.b ** k * f)); }
+        out.c.push(tc.r, tc.g, tc.b);
+      }
+    }
+  });
+  const res = {};
+  for (const k in acc) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(acc[k].p, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(acc[k].c, 3)); geo.computeVertexNormals(); res[k] = geo; }
+  return res;
+}
+// stand baked parts on the ground, centred, scaled so one dimension hits a target; returns parts with .size
+function fitBaked(parts, { height, width, length, rotY = 0 }) {
+  const box = new THREE.Box3(), geos = Object.values(parts).filter(g => g.attributes.position.count);
+  if (rotY) geos.forEach(g => g.rotateY(rotY));
+  geos.forEach(g => { g.computeBoundingBox(); box.union(g.boundingBox); });
+  const size = box.getSize(new THREE.Vector3()), s = height ? height / size.y : width ? width / size.x : length / size.z;
+  geos.forEach(g => { g.translate(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2); g.scale(s, s, s); g.computeBoundingBox(); });
+  parts.size = size.multiplyScalar(s);
+  return parts;
+}
+// one baked geometry at a target size: bakedGeo(gltf, { height: 5 })
+const bakedGeo = (gltf, size, opts) => fitBaked(bake(gltf, opts), size).all;
+const MDL = await loadModels(['palm', 'tent', 'truck', 'rock']);
+// a baked model laid along x (its longest side), on the ground
+function alongX(gltf, length) { const raw = bake(gltf); raw.all.computeBoundingBox(); const b = raw.all.boundingBox; return fitBaked(raw, { width: length, rotY: b.max.z - b.min.z > b.max.x - b.min.x ? Math.PI / 2 : 0 }).all; }
+// the thrown boulder: a Quaternius rock, centred, about 2 units across
+const ROCK = MDL.rock ? (() => { const g = bakedGeo(MDL.rock, { height: 2 }, { lift: .4 }); g.translate(0, -1, 0); return g; })() : null;
+
 const vc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.1 });
 const vcFlat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
 
@@ -692,12 +791,17 @@ function buildIsland() {
   // airfield: runway, hangars, tower, fuel tanks
   const parts = [P(G.box, 0x4a4a46, 0, 3.3, 400, 380, 0.3, 30), P(G.box, 0xe8e2cc, 0, 3.5, 400, 360, 0.05, 1)];
   for (let x = -150; x <= 150; x += 24) parts.push(P(G.box, 0xe8e2cc, x, 3.52, 400, 10, 0.05, 1.2));
-  for (const hx of [-120, -70, -20]) parts.push(P(new THREE.CylinderGeometry(12, 12, 36, 12, 1, false, 0, Math.PI), 0x7a7d70, hx, 3, 440, 1, 1, 1, 0, 0, Math.PI / 2), P(G.box, 0x3c3e3a, hx, 8, 458, 22, 10, 0.4));
+  if (MDL.tent) {
+    // quonset-style hangars and supply trucks along the apron
+    const hangar = alongX(MDL.tent, 36);
+    for (const hx of [-120, -70, -20]) { const h = new THREE.Mesh(hangar, vcFlat); h.position.set(hx, 3, 440); h.castShadow = h.receiveShadow = true; scene.add(h); }
+  } else for (const hx of [-120, -70, -20]) parts.push(P(new THREE.CylinderGeometry(12, 12, 36, 12, 1, false, 0, Math.PI), 0x7a7d70, hx, 3, 440, 1, 1, 1, 0, 0, Math.PI / 2), P(G.box, 0x3c3e3a, hx, 8, 458, 22, 10, 0.4));
+  if (MDL.truck) { const tg = bakedGeo(MDL.truck, { length: 9 }, { lift: .4 }); for (const [tx, tz, r] of [[22, 462, 0.4], [34, 470, -0.2], [140, 432, 1.6]]) { const t = new THREE.Mesh(tg, vcFlat); t.position.set(tx, 3.3, tz); t.rotation.y = r; t.castShadow = true; scene.add(t); } }
   parts.push(P(G.box, 0xd8d2c0, 60, 12, 440, 6, 18, 6), P(G.box, 0x9fc0d0, 60, 22, 440, 8, 3, 8), P(G.box, 0x6a5a4a, 60, 24, 440, 9, 0.6, 9));
   for (const tx of [100, 116]) parts.push(P(G.cyl, 0xcfc8b4, tx, 8, 450, 6, 10, 6));
   const base = new THREE.Mesh(merge(parts), vcFlat); base.castShadow = true; base.receiveShadow = true; scene.add(base);
   // palms
-  const palmGeo = merge([P(new THREE.CylinderGeometry(0.3, 0.5, 12, 5), 0x7a5c3a, 0, 6, 0, 1, 1, 1, 0, 0, 0.12), ...[0, 1, 2, 3, 4, 5].map(k => P(G.cone, 0x3f7a2c, Math.cos(k * 1.05) * 3, 11.8, Math.sin(k * 1.05) * 3, 0.9, 6, 0.4, Math.PI / 2 + 0.35, -k * 1.05 + Math.PI / 2, 0))]);
+  const palmGeo = MDL.palm ? bakedGeo(MDL.palm, { height: 14 }) : merge([P(new THREE.CylinderGeometry(0.3, 0.5, 12, 5), 0x7a5c3a, 0, 6, 0, 1, 1, 1, 0, 0, 0.12), ...[0, 1, 2, 3, 4, 5].map(k => P(G.cone, 0x3f7a2c, Math.cos(k * 1.05) * 3, 11.8, Math.sin(k * 1.05) * 3, 0.9, 6, 0.4, Math.PI / 2 + 0.35, -k * 1.05 + Math.PI / 2, 0))]);
   const pts = [];
   for (let k = 0; k < 900 && pts.length < 260; k++) { const x = rr(-700, 700), z = rr(-250, 900), h = islandHeight(x, z); if (h > 3 && h < 30 && !(Math.abs(z - 400) < 30 && Math.abs(x) < 200)) pts.push([x, h, z]); }
   const im = new THREE.InstancedMesh(palmGeo, vcFlat, pts.length);
@@ -822,7 +926,7 @@ function buildMonster() {
     const hand = new THREE.Group(); scene.add(hand);
     mk(hand, G.sph, skin, 0, 0, 0, 5, 4, 6);
     for (let k = -1; k <= 1; k++) mk(hand, G.cone, bone, k * 2.6, 0, 6.5, 1, 7, 1, Math.PI / 2 - 0.4, 0, 0);
-    const rock = mk(hand, G.ico, new THREE.MeshStandardMaterial({ color: 0x5c554c, roughness: 1, flatShading: true }), 0, 0, 7, 7, 6, 7); rock.visible = false;
+    const rock = mk(hand, ROCK || G.ico, new THREE.MeshStandardMaterial({ color: ROCK ? 0xffffff : 0x5c554c, vertexColors: !!ROCK, roughness: 1, flatShading: true }), 0, 0, 7, 7, 6, 7); rock.visible = false;
     arms.push({ s, shoulder, up, lo, hand, rock, H: new V3(), elbow: new V3(), S: new V3(), state: 'idle', t: 0, W: new V3(), T: new V3(), F: new V3(), hitDone: new Set(), target: null });
   }
   // tail sweeping behind, mostly awash
@@ -905,7 +1009,7 @@ function updateTracers(dt) {
   for (const t of tracers) { if (!t.on) continue; const s = 900 * dt; t.p.addScaledVector(t.d, s); t.left -= s; t.m.position.copy(t.p); if (t.left <= 0) { t.on = false; t.m.visible = false; } }
 }
 const rocketGeo = merge([P(G.cyl, 0xd0d0c8, 0, 0, 0, 0.25, 2.4, 0.25, Math.PI / 2, 0, 0), P(G.cone, 0xc8342a, 0, 0, 1.5, 0.25, 0.7, 0.25, Math.PI / 2, 0, 0)]);
-const boulderMat = new THREE.MeshStandardMaterial({ color: 0x5c554c, roughness: 1, flatShading: true });
+const boulderMat = new THREE.MeshStandardMaterial({ color: ROCK ? 0xffffff : 0x5c554c, vertexColors: !!ROCK, roughness: 1, flatShading: true });
 const spineMat = new THREE.MeshStandardMaterial({ color: 0x1a3030, emissive: 0x40ffd0, emissiveIntensity: 1.4, flatShading: true });
 function addProj(o) { scene.add(o.m); proj.push(o); return o; }
 
@@ -1261,7 +1365,7 @@ function updateMonster(dt) {
         const tgt = MON.target; if (tgt) {
           const from = a.H.clone(), dist = from.distanceTo(tgt.p), fl = clamp(dist / 110, 0.8, 3.5), aim = predict(tgt, fl, new V3());
           const v = aim.sub(from).divideScalar(fl); v.y += 0.5 * 20 * fl;
-          const m = new THREE.Mesh(G.ico, boulderMat); m.scale.setScalar(6); m.castShadow = true;
+          const m = new THREE.Mesh(ROCK || G.ico, boulderMat); m.scale.setScalar(6); m.castShadow = true;
           addProj({ type: 'boulder', m, p: from, v, life: 7, r: 6, hp: 30, spin: new V3(rr(-2, 2), rr(-2, 2), rr(-2, 2)) });
         } } }
       else if (a.state === 'recover') { if (a.t > 0.6) { a.state = 'idle'; MON.act = null; MON.cd = rr(1.6, 3) / diff.pace; } }

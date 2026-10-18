@@ -259,6 +259,8 @@ h2{font:400 clamp(36px,8vw,56px) "Lilita One",sans-serif;margin:0;color:var(--co
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const $ = id => document.getElementById(id);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -410,6 +412,111 @@ function buildIsland() {
   for (let k = 0; k < 6; k++) { const a = k / 6 * 6.28 + .4, r = rand(650, 900); const isl = new THREE.Mesh(new THREE.ConeGeometry(rand(60, 140), rand(30, 70), 9), new THREE.MeshStandardMaterial({ color: 0x2f7a4a, flatShading: true, roughness: 1 })); isl.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); isl.scale.y = .6; scene.add(isl); }
 }
 
+// ---------- models ----------
+// Low-poly models from Poly Pizza (credits in the README). Each ships as models/<name>.js, a module wrapping
+// the GLB in base64 (artifacts do not serve .glb); textures load through image elements so the artifact
+// sandbox allows them. Anything that fails to load leaves the hand-built geometry in place.
+async function loadModel(loader, name) {
+  const { default: b64 } = await import(`./models/${name}.js`);
+  const s = atob(b64), bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return loader.parseAsync(bytes.buffer, '');
+}
+async function loadModels(names) {
+  const loader = new GLTFLoader(), out = {};
+  loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  await Promise.all(names.map(async n => { try { out[n] = await loadModel(loader, n); } catch (e) { console.warn('model failed to load:', n, e && e.message); } }));
+  return out;
+}
+// a copy of a model standing on its own origin, centred, scaled so one dimension hits a target
+function fitClone(gltf, size, opts = {}) {
+  const skinned = opts.skinned ?? gltf.animations.length > 0;
+  const obj = skinned ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+  if (opts.rotY) obj.rotation.y = opts.rotY;
+  obj.updateMatrixWorld(true);
+  obj.traverse(o => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  const box = new THREE.Box3().setFromObject(obj, true), sz = box.getSize(new THREE.Vector3());
+  const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+  obj.scale.multiplyScalar(k);
+  obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+  obj.traverse(o => { if (o.isMesh) { o.castShadow = opts.shadow !== false; o.receiveShadow = true; if (o.isSkinnedMesh) o.frustumCulled = false; } });
+  const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); g.userData.root = obj;
+  return g;
+}
+// repaint materials by name: recolor(g, { Main: { color: 0xff0000 } })
+const recolor = (g, map) => g.traverse(o => { if (!o.isMesh) return; const ms = [].concat(o.material).map(m => { const c = map[m.name] || map['*']; if (!c) return m; const n = m.clone(); for (const k in c) { if (n[k] && n[k].isColor) n[k].set(c[k]); else n[k] = c[k]; } return n; }); o.material = ms.length === 1 ? ms[0] : ms; });
+// an animation mixer with named actions: anim(g, gltf, ['Run', 'Idle'])
+function anim(g, gltf, names) {
+  const mixer = new THREE.AnimationMixer(g.userData.root), acts = {};
+  for (const n of names) { const c = gltf.animations.find(a => a.name === n || a.name.endsWith('|' + n)); if (c) { acts[n] = mixer.clipAction(c); } }
+  return { mixer, acts, play(n, fade = .2) { const a = acts[n]; if (!a || this.cur === a) return; a.reset().fadeIn(fade).play(); if (this.cur) this.cur.fadeOut(fade); this.cur = a; } };
+}
+// bake(gltf, { parts: { name: /material/ }, clip, time, lift }) -> { name: geometry }: the model posed and flattened
+// into plain vertex-coloured triangles (material colour x texture x vertex colour), ready for merging or instancing
+const _texReaders = new Map();
+function texReader(tex) {
+  let r = _texReaders.get(tex); if (r) return r;
+  const img = tex.image, c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data, w = c.width, h = c.height;
+  r = (u, v, out) => { const px = Math.min(w - 1, Math.floor((u - Math.floor(u)) * w)), py = Math.min(h - 1, Math.floor((v - Math.floor(v)) * h)), i = (py * w + px) * 4; return out.setRGB(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255, THREE.SRGBColorSpace); };
+  _texReaders.set(tex, r); return r;
+}
+function bake(gltf, { parts = { all: /.*/ }, clip = null, time = 0, lift = 0, byNode = false } = {}) {
+  const obj = SkeletonUtils.clone(gltf.scene);
+  if (clip && gltf.animations.length) { const a = gltf.animations.find(x => clip.test(x.name)) || gltf.animations[0]; const mx = new THREE.AnimationMixer(obj); mx.clipAction(a).play(); mx.update(time); }
+  obj.updateMatrixWorld(true);
+  const acc = {}; for (const k in parts) acc[k] = { p: [], c: [] };
+  const v = new THREE.Vector3(), tc = new THREE.Color(), cc = new THREE.Color();
+  obj.traverse(m => {
+    if (!m.isMesh) return;
+    if (m.isSkinnedMesh) m.skeleton.update();
+    const mats = Array.isArray(m.material) ? m.material : [m.material], g = m.geometry, pos = g.attributes.position, uv = g.attributes.uv, vcol = g.attributes.color, idx = g.index;
+    const groups = g.groups.length ? g.groups : [{ start: 0, count: idx ? idx.count : pos.count, materialIndex: 0 }];
+    for (const gr of groups) {
+      const mat = mats[gr.materialIndex] || mats[0];
+      let name = mat.name || ''; if (byNode) { name = ''; for (let o = m; o; o = o.parent) name += o.name + '/'; }
+      const key = Object.keys(parts).find(k => parts[k].test(name)); if (!key) continue;
+      const out = acc[key], samp = mat.map ? texReader(mat.map) : null;
+      for (let i = gr.start; i < gr.start + gr.count; i++) {
+        const vi = idx ? idx.getX(i) : i;
+        m.getVertexPosition(vi, v).applyMatrix4(m.matrixWorld); out.p.push(v.x, v.y, v.z);
+        tc.copy(mat.color || cc.setRGB(1, 1, 1));
+        if (samp && uv) tc.multiply(samp(uv.getX(vi), uv.getY(vi), cc));
+        if (vcol) tc.multiply(cc.fromBufferAttribute(vcol, vi));
+        if (lift) { const k = 1 - lift * 0.25, f = 1 + lift * 0.2; tc.setRGB(Math.min(1, tc.r ** k * f), Math.min(1, tc.g ** k * f), Math.min(1, tc.b ** k * f)); }
+        out.c.push(tc.r, tc.g, tc.b);
+      }
+    }
+  });
+  const res = {};
+  for (const k in acc) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(acc[k].p, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(acc[k].c, 3)); geo.computeVertexNormals(); res[k] = geo; }
+  return res;
+}
+// stand baked parts on the ground, centred, scaled so one dimension hits a target; returns parts with .size
+function fitBaked(parts, { height, width, length, rotY = 0 }) {
+  const box = new THREE.Box3(), geos = Object.values(parts).filter(g => g.attributes.position.count);
+  if (rotY) geos.forEach(g => g.rotateY(rotY));
+  geos.forEach(g => { g.computeBoundingBox(); box.union(g.boundingBox); });
+  const size = box.getSize(new THREE.Vector3()), s = height ? height / size.y : width ? width / size.x : length / size.z;
+  geos.forEach(g => { g.translate(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2); g.scale(s, s, s); g.computeBoundingBox(); });
+  parts.size = size.multiplyScalar(s);
+  return parts;
+}
+// one baked geometry at a target size: bakedGeo(gltf, { height: 5 })
+const bakedGeo = (gltf, size, opts) => fitBaked(bake(gltf, opts), size).all;
+// a baked model with its longest horizontal side laid along 'x' or 'z', scaled to that length
+function along(gltf, axis, length, opts = {}) {
+  const raw = bake(gltf, opts); const all = Object.values(raw); const b = new THREE.Box3(); all.forEach(g => { g.computeBoundingBox(); b.union(g.boundingBox); });
+  const xLong = b.max.x - b.min.x > b.max.z - b.min.z, turn = (axis === 'x') !== xLong ? Math.PI / 2 : 0;
+  return fitBaked(raw, axis === 'x' ? { width: length, rotY: turn } : { length, rotY: turn });
+}
+const MDL = await loadModels(['palm', 'palm-b', 'rock', 'tiki']);
+// a baked Quaternius palm, carrying the same top/x hints the hand-built palms gave the trunk and canopy colliders
+function palmModelGeo(name, height) {
+  const g = bakedGeo(MDL[name], { height }, { lift: .3 }); g.computeBoundingBox();
+  const p = g.attributes.position; let sx = 0, n = 0; for (let i = 0; i < p.count; i++) if (p.getY(i) > height * .8) { sx += p.getX(i); n++; }
+  g.userData = { top: height * .9, x: n ? sx / n : 0 }; return g;
+}
 /* ================= FOLIAGE ================= */
 const swayU = { time: { value: 0 } };
 function swayMat(o = {}) {
@@ -459,7 +566,7 @@ function addCollider(c) { colliders.push(c); const i = Math.floor(c.x / CELL), j
 function nearColliders(x, z) { return grid.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL)) || []; }
 function buildFoliage() {
   const rng = seeded(4242), r = (a, b) => a + rng() * (b - a);
-  const palmVar = [palmGeo(8, .6), palmGeo(10, 1), palmGeo(7, 1.6), palmGeo(11, .3)];
+  const palmVar = MDL.palm && MDL['palm-b'] ? [palmModelGeo('palm', 9), palmModelGeo('palm-b', 11), palmModelGeo('palm', 8), palmModelGeo('palm-b', 12)] : [palmGeo(8, .6), palmGeo(10, 1), palmGeo(7, 1.6), palmGeo(11, .3)];
   const lists = { palm: palmVar.map(() => []), bush: [[], [], []], tree: [], fern: [], mon: [], flower: [], rock: [] };
   const place = (kind, x, z, s, rot, v = 0) => { const y = heightAt(x, z); const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y - .1, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(s, s, s)); (Array.isArray(lists[kind][v]) ? lists[kind][v] : lists[kind]).push({ m, x, z }); return y; };
   const addPalm = (x, z, s, rot) => { const v = Math.floor(rng() * 4), y = place('palm', x, z, s, rot, v), g = palmVar[v].userData; const tx = Math.cos(-rot) * g.x * s, tz = Math.sin(-rot) * g.x * s; addCollider({ x, z, r: .4 * s, h: g.top * s * .9, y, kind: 'trunk' }); addCollider({ x: x + tx, z: z + tz, r: 3 * s, y: y + g.top * s - .6, cy: true, kind: 'canopy' }); };
@@ -491,7 +598,14 @@ function buildFoliage() {
   add(treeGeo(), lists.tree, true); add(fernGeo(), lists.fern, false); add(monsteraGeo(), lists.mon, false);
   const FC = [0xff3a6a, 0xff6a3a, 0xffd23f, 0xffffff, 0xd84aff, 0xff2a2a];
   add(new THREE.OctahedronGeometry(.17, 0), lists.flower.map((p, i) => ({ x: p[0], z: p[2], m: new THREE.Matrix4().makeTranslation(p[0], p[1], p[2]), c: new THREE.Color(FC[i % FC.length]) })), false, new THREE.MeshStandardMaterial({ roughness: .5, emissive: 0x220a10 }));
-  add(new THREE.DodecahedronGeometry(1, 0), lists.rock, false, new THREE.MeshStandardMaterial({ color: 0x8a8478, roughness: 1, flatShading: true }));
+  add(MDL.rock ? bakedGeo(MDL.rock, { width: 2.2 }) : new THREE.DodecahedronGeometry(1, 0), lists.rock, false, new THREE.MeshStandardMaterial({ color: 0x8a8478, roughness: 1, flatShading: true }));
+  // a carved tiki head standing guard beside every tee
+  if (MDL.tiki) for (const H of HOLES) {
+    const t = fitClone(MDL.tiki, { height: 2.6 }); recolor(t, { '*': { color: 0x9a6a42 } });
+    const dx = H.basket.x - H.tee.x, dz = H.basket.z - H.tee.z, d = Math.hypot(dx, dz) || 1, ux = dx / d, uz = dz / d;
+    const x = H.tee.x - uz * 5 - ux * 1.5, z = H.tee.z + ux * 5 - uz * 1.5;   // off to the side and a step behind the thrower
+    t.position.set(x, heightAt(x, z) - .1, z); t.rotation.y = Math.atan2(H.tee.x - x, H.tee.z - z); scene.add(t);
+  }
 }
 
 /* ================= BASKETS ================= */
