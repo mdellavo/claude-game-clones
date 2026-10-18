@@ -669,7 +669,6 @@ function buildModels(){
   if (MDL.pine) G.pine = bakedGeo(MDL.pine, { height: 5.4 }, { lift: .3 });
   if (MDL.rock) G.rock = merge([bakedGeo(MDL.rock, { width: 2.4 }, { lift: .5 }), shape(new THREE.IcosahedronGeometry(.8, 0), 0, .78, 0, SNOW, [.3, .2, 0], [1.1, .3, .9])]);
   if (MDL.mug) { const m = bakedGeo(MDL.mug, { height: .6 }); m.translate(0, .05, 0); G.cocoa = merge([m, shape(new THREE.CylinderGeometry(.2, .2, .04, 10), 0, .55, 0, 0x6b4327)]); }
-  if (MDL.dog) G.dog = bakedGeo(MDL.dog, { length: 1.25 }, { clip: /Gallop/, time: .2, lift: .3 });
   G.flagL = merge([shape(new THREE.CylinderGeometry(.05, .05, 2.1, 6), 0, 1.05, 0, 0xfdf6e7), part(.62, .4, .04, .33, 1.78, 0, 0xd1362f)]);
   G.flagR = merge([shape(new THREE.CylinderGeometry(.05, .05, 2.1, 6), 0, 1.05, 0, 0xfdf6e7), part(.62, .4, .04, .33, 1.78, 0, 0x2f6fd1)]);
   G.skier = merge([
@@ -685,6 +684,7 @@ function buildModels(){
     part(.11, .34, .11, -.14, .2, -.32, 0x6b4f33), part(.11, .34, .11, .14, .2, -.32, 0x6b4f33),
     part(.09, .09, .42, 0, .72, -.62, 0x9a7a52, [.5, 0, 0]),
   ]);
+  if (MDL.dog) G.dog = bakedGeo(MDL.dog, { length: 1.25 }, { clip: /Gallop/, time: .2, lift: .3 });
   G.rail = (len) => merge([
     shape(new THREE.CylinderGeometry(.09, .09, len, 8), 0, 1.02, 0, STEEL, [PI / 2, 0, 0]),
     part(.26, .1, len, 0, .92, 0, 0x8c98a2),
