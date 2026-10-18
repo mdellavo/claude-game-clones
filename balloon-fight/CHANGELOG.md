@@ -4,6 +4,7 @@ Every change to `balloon-fight/`, newest first, generated from the git history b
 
 ## 2026-10-18
 
+- **Keep each game's own text styles out of the changelog panel** `87751a2`
 - **Add a per-game changelog viewable from each game's devkit menu** `1aea49a`
 - **Swap Poly Pizza models into Balloon Fight and Block Party** `1335182`
   The fliers are Quaternius's rigged platformer character, repainted per side and animated (airborne pose, run, idle) with the balloon strings tied to the forearms; a swimming clownfish; Quaternius palms, rocks, bushes, clouds and mineral clusters recut as glowing crystals; a modelled lighthouse that keeps its sweeping beam.

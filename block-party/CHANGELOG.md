@@ -4,6 +4,7 @@ Every change to `block-party/`, newest first, generated from the git history by 
 
 ## 2026-10-18
 
+- **Keep each game's own text styles out of the changelog panel** `87751a2`
 - **Add a per-game changelog viewable from each game's devkit menu** `1aea49a`
 - **Swap Poly Pizza models into Balloon Fight and Block Party** `1335182`
   Kenney houses repainted lot by lot, with their windows glowing at night; Quaternius cars, trees, bushes, bins, fences and street lights; storm drains along every street; Quaternius monsters for every enemy and Big Mama; and the Quaternius hoodie kid, animated through a mixer. Models are baked into vertex-coloured geometry so they keep using the merged block meshes and the instanced crowds, and still hold 60 fps with a full swarm.

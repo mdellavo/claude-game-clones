@@ -4,6 +4,7 @@ Every change to `radio-rally-3d/`, newest first, generated from the git history 
 
 ## 2026-10-18
 
+- **Keep each game's own text styles out of the changelog panel** `87751a2`
 - **Add a per-game changelog viewable from each game's devkit menu** `1aea49a`
 - **Swap Poly Pizza models into the rest of the games** `79cdae7`
   Trees, snowy pines, desert rocks; the artifact build now emits an import map so the loader resolves

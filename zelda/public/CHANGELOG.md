@@ -4,6 +4,7 @@ Every change to `zelda/`, newest first, generated from the git history by `tools
 
 ## 2026-10-18
 
+- **Keep each game's own text styles out of the changelog panel** `87751a2`
 - **Add a per-game changelog viewable from each game's devkit menu** `1aea49a`
 
 ## 2026-10-17
