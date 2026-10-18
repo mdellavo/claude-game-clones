@@ -11,16 +11,21 @@ Each game was written from a single prompt, quoted in the README's Prompt column
 ## Layout
 
 ```
-<game>/index.html     the game (most are one self-contained file)
+<game>/index.html     the game page
+<game>/models/        Poly Pizza models as base64 JS modules (xcom and zelda keep them under public/)
+<game>/CHANGELOG.md   generated from git history (xcom and zelda: public/CHANGELOG.md)
 screenshots/          <game>-1.jpg, -2.jpg, -3.jpg — used by the README table
 README.md             one table row per game: name, description, prompt, screenshots
 index.html            launcher page for GitHub Pages; builds its tiles from the README table at runtime,
                       and index.html#<folder> opens a single game's page instead of the grid
+tools/changelog.mjs   regenerates every CHANGELOG.md from git log
 tools/build-site.mjs  assembles _site/ (launcher + every game, Vite games built) for Pages
 .github/workflows/    pages.yml runs the build and deploys _site/ on push to main
 ```
 
-Seven games are not single files:
+Every 3D game also loads `models/*.js`: Poly Pizza GLBs wrapped as base64 modules
+(`export default '<base64>'`), because artifacts do not serve `.glb`. Each model falls back to the
+old hand-built geometry if it fails to load. Beyond that, five games have more files:
 
 | Game | Shape |
 | --- | --- |
@@ -28,7 +33,6 @@ Seven games are not single files:
 | `radio-rally-3d/` | ES modules under `src/`, no bundler; `tools/` has a build script and headless sims |
 | `tide-breaker/` | ES modules under `src/` plus `style.css`, served straight from the folder |
 | `polygon-wing/` | `index.html` plus plain `core.js` and `game.js`, no modules |
-| `balloon-fight/`, `block-party/` | `index.html` plus `models/*.js`: Poly Pizza GLBs wrapped as base64 modules (`export default '<base64>'`), because artifacts do not serve `.glb`. Each model falls back to the old hand-built geometry if it fails to load |
 
 `node_modules/` and `dist/` are gitignored, so a checkout of `xcom/` or `zelda/` needs
 `npm install` before it runs.
@@ -74,6 +78,16 @@ Every game must be playable on a phone. Two patterns are in use:
 Check a change on a phone-sized viewport before calling it done, including that the controls
 are visible and that nothing scrolls sideways.
 
+## Changelogs
+
+Each game shows its `CHANGELOG.md` from the devkit menu (the `⋯` button, next to Fullscreen, FPS
+counter and Debug log), or from `DBG.changelog(true)` in the console. The file is fetched relative to the
+page, so it must ship alongside it. Run `node tools/changelog.mjs` after committing a change and
+commit the regenerated files separately, so every entry points at a real commit hash. An entry's
+detail comes from the commit body line that starts with the game's name (`- Rotgate: …`),
+or from the body's first paragraph when the commit touched only that game. Name each game
+that way in a commit that touches several of them.
+
 ## Running and testing
 
 ```sh
@@ -95,7 +109,7 @@ Each game is published at its own claude.ai URL. Keep those URLs out of the READ
 find a game's URL with the Artifact tool's `list` action (artifacts are titled after the game).
 
 - Republish to the **same** URL after changing a game, so the published copy stays current.
-- A game with extra files (Polygon Wing's scripts, the `models/` folders of Balloon Fight and Block Party) publishes them alongside the page.
+- A game with extra files (its `models/` folder, `CHANGELOG.md`, Polygon Wing's scripts) publishes them alongside the page.
 - Poly Pizza models are CC0 or CC-BY. Credit every CC-BY model in the README's Model credits table.
 - Artifacts published from an earlier session must be read before they can be republished.
   A published page is wrapped in claude.ai's own `<html><head>…<body>`; strip that wrapper

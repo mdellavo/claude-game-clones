@@ -1,0 +1,30 @@
+# Hollowmere changelog
+
+Every change to `hollowmere/`, newest first, generated from the git history by `tools/changelog.mjs`.
+
+## 2026-10-18
+
+- **Swap Poly Pizza models into the rest of the games** `79cdae7`
+  KayKit graves, coffins, skulls and ribcages
+
+## 2026-10-17
+
+- **Cut render cost across the games so laptops stop throttling** `abdc745`
+- **Log each fullscreen change once in the devkit** `f3b3d12`
+- **Add fullscreen, FPS counter and debug log to 15 games** `d391bed`
+
+## 2026-10-10
+
+- **Link the leaderboard from every game's title screen** `cab5640`
+
+## 2026-10-09
+
+- **Add a shared online leaderboard and wire 24 games to it** `85aa3ce`
+
+## 2026-09-26
+
+- **Make every game playable on a phone** `67fc80a`
+
+## 2026-09-18
+
+- **Initial commit: WebGL game clones with README and screenshots** `a95434d`

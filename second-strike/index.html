@@ -129,6 +129,15 @@ h2{font:800 clamp(34px,8vw,64px) Oxanium,sans-serif;margin:0;letter-spacing:.06e
 #dk-log .dk-bar button{all:unset;cursor:pointer;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.12);color:#fff}
 #dk-lines{overflow-y:auto;padding:4px 6px;white-space:pre-wrap;word-break:break-word;overscroll-behavior:contain}
 #dk-lines .w{color:#fd6}#dk-lines .e{color:#f77}#dk-lines .g{color:#8cf}
+#dk-cl{position:fixed;z-index:2147483002;inset:0;display:flex;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));background:rgba(4,6,12,.62)}
+#dk-cl .dk-card{width:min(680px,100%);max-height:100%;display:flex;flex-direction:column;border-radius:12px;background:#11141c;color:#e6e9ef;border:1px solid rgba(255,255,255,.16);box-shadow:0 20px 60px rgba(0,0,0,.5);font:14px/1.5 system-ui,sans-serif}
+#dk-cl .dk-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.1)}
+#dk-cl .dk-bar b{flex:1;font-size:15px}
+#dk-cl .dk-bar button{all:unset;cursor:pointer;padding:4px 10px;border-radius:6px;background:rgba(255,255,255,.12)}
+#dk-cl .dk-body{overflow-y:auto;padding:4px 16px 16px;overscroll-behavior:contain}
+#dk-cl h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#9fb3c8;margin:16px 0 6px}
+#dk-cl ul{margin:0;padding-left:18px}#dk-cl li{margin:0 0 8px}#dk-cl li p{margin:2px 0 0;color:#b8c0cc}
+#dk-cl code{font:12px ui-monospace,Menlo,monospace;color:#8cf}#dk-cl .dk-note{color:#9aa4b2}
 </style>
 <script>
 (() => {
@@ -192,6 +201,34 @@ h2{font:800 clamp(34px,8vw,64px) Oxanium,sans-serif;margin:0;letter-spacing:.06e
   // one event only: Chrome fires both fullscreenchange and webkitfullscreenchange, which logged every change twice
   document.addEventListener('onfullscreenchange' in document ? 'fullscreenchange' : 'webkitfullscreenchange', () => { push('g', [fsElement() ? 'entered fullscreen' : 'left fullscreen']); syncMenu(); });
 
+  // ---- changelog: CHANGELOG.md beside the page (generated from git by tools/changelog.mjs) ----
+  let clEl = null;
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  function renderMd(md) {
+    let html = '', open = false;
+    for (const line of md.split('\n')) {
+      if (/^# /.test(line)) continue;
+      if (/^## /.test(line)) { if (open) { html += '</ul>'; open = false; } html += `<h2>${inline(line.slice(3))}</h2>`; }
+      else if (/^- /.test(line)) { if (!open) { html += '<ul>'; open = true; } else html += '</li>'; html += `<li>${inline(line.slice(2))}`; }
+      else if (/^\s+\S/.test(line) && open) html += `<p>${inline(line.trim())}</p>`;
+      else if (line.trim() && !open) html += `<p class="dk-note">${inline(line)}</p>`;
+    }
+    return html + (open ? '</li></ul>' : '');
+  }
+  function setChangelog(on) {
+    if (!on) { if (clEl) { clEl.remove(); clEl = null; } return; }
+    if (clEl) return;
+    clEl = el('div', 'dk-cl', `<div class="dk-card" role="dialog" aria-label="${DK.game} changelog"><div class="dk-bar"><b>${DK.game} · changelog</b><button type="button" data-a="close">Close</button></div><div class="dk-body"><p class="dk-note">Loading…</p></div></div>`);
+    clEl.addEventListener('click', (e) => { if (e.target === clEl || (e.target.dataset && e.target.dataset.a === 'close')) setChangelog(false); });
+    for (const ev of ['pointerdown', 'touchstart', 'mousedown', 'wheel', 'keydown']) clEl.addEventListener(ev, (e) => { if (ev === 'keydown' && e.key === 'Escape') setChangelog(false); e.stopPropagation(); }, { passive: ev !== 'keydown' });
+    document.body.appendChild(clEl);
+    const body = clEl.querySelector('.dk-body');
+    fetch('CHANGELOG.md').then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then((md) => { if (clEl) body.innerHTML = renderMd(md); })
+      .catch((err) => { if (clEl) body.innerHTML = '<p class="dk-note">The changelog could not be loaded.</p>'; push('w', ['changelog:', err && err.message]); });
+  }
+
   // ---- menu ----
   function syncMenu() {
     if (!menuEl) return;
@@ -202,9 +239,9 @@ h2{font:800 clamp(34px,8vw,64px) Oxanium,sans-serif;margin:0;letter-spacing:.06e
   function toggleMenu(force) {
     const open = force ?? !menuEl;
     if (open && !menuEl) {
-      menuEl = el('div', 'dk-menu', '<button type="button">Fullscreen</button><button type="button">FPS counter</button><button type="button">Debug log</button>');
+      menuEl = el('div', 'dk-menu', '<button type="button">Fullscreen</button><button type="button">FPS counter</button><button type="button">Debug log</button><button type="button">Changelog</button>');
       const [a, b, c] = menuEl.querySelectorAll('button');
-      a.onclick = () => { toggleFs(); toggleMenu(false); }; b.onclick = () => setFps(!fpsOn); c.onclick = () => setLog(!logEl);
+      a.onclick = () => { toggleFs(); toggleMenu(false); }; b.onclick = () => setFps(!fpsOn); c.onclick = () => setLog(!logEl); menuEl.querySelectorAll('button')[3].onclick = () => { toggleMenu(false); setChangelog(true); };
       for (const ev of ['pointerdown', 'touchstart', 'mousedown']) menuEl.addEventListener(ev, e => e.stopPropagation(), { passive: true });
       document.body.appendChild(menuEl); syncMenu();
     } else if (!open && menuEl) { menuEl.remove(); menuEl = null; }
@@ -231,7 +268,7 @@ h2{font:800 clamp(34px,8vw,64px) Oxanium,sans-serif;margin:0;letter-spacing:.06e
   if (document.body) mount(); else addEventListener('DOMContentLoaded', mount);
 
   // game-facing API: DBG.log('event', data) for notable game events; DBG.warn / DBG.error likewise
-  window.DBG = { log: (...a) => push('g', a), warn: (...a) => push('w', a), error: (...a) => push('e', a), fps: setFps, logPanel: setLog, fullscreen: toggleFs, mountPoint: () => btnEl };
+  window.DBG = { changelog: setChangelog, log: (...a) => push('g', a), warn: (...a) => push('w', a), error: (...a) => push('e', a), fps: setFps, logPanel: setLog, fullscreen: toggleFs, mountPoint: () => btnEl };
 })();
 </script>
 <style>
