@@ -4,6 +4,8 @@ Every change to `powder-chute/`, newest first, generated from the git history by
 
 ## 2026-10-18
 
+- **Use the Poly Pizza dog model in Powder Chute** `80c93d3`
+  The model swap set G.dog from the loaded model, but the hand-built dog was defined a few lines later and replaced it, so the dog never showed the model and its 940 KB file loaded for nothing. The swap now runs after the hand-built dog.
 - **Keep the changelog's date headings bold in every game** `ae5a3e0`
 - **Keep each game's own text styles out of the changelog panel** `87751a2`
 - **Add a per-game changelog viewable from each game's devkit menu** `1aea49a`
