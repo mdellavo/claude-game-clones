@@ -694,10 +694,15 @@ export class Game {
       mx = Math.max(mx, Math.abs(p.x));
       my = Math.max(my, Math.abs(p.y));
     }
-    const aspect = (this.canvas.clientWidth || 1) / (this.canvas.clientHeight || 1);
+    // the HUD floats over the top of the canvas: fit the room into the area below it and let the
+    // world carry on underneath the HUD
+    const cw = this.canvas.clientWidth || 1, ch = this.canvas.clientHeight || 1;
+    const hudPx = Math.min(ch * 0.4, document.getElementById('hud')?.offsetHeight || 0);
+    const aspect = cw / Math.max(1, ch - hudPx);
     let hw = mx * 1.02, hh = my * 1.04;
     if (hw / hh > aspect) hh = hw / aspect; else hw = hh * aspect;
-    Object.assign(this.camera, { left: -hw, right: hw, top: hh, bottom: -hh });
+    const above = hudPx * (2 * hh) / Math.max(1, ch - hudPx);
+    Object.assign(this.camera, { left: -hw, right: hw, top: hh + above, bottom: -hh });
     this.camera.updateProjectionMatrix();
     this.camOffset = off.multiplyScalar(60);
   }
