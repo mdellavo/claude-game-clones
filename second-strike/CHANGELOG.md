@@ -4,6 +4,7 @@ Every change to `second-strike/`, newest first, generated from the git history b
 
 ## 2026-10-18
 
+- **Keep the changelog's date headings bold in every game** `ae5a3e0`
 - **Keep each game's own text styles out of the changelog panel** `87751a2`
 - **Add a per-game changelog viewable from each game's devkit menu** `1aea49a`
 - **Swap Poly Pizza models into the rest of the games** `79cdae7`
