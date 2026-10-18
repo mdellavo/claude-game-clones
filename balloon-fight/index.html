@@ -1623,6 +1623,29 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+// Low-poly models from Poly Pizza (credits in the README). Anything that fails to load falls back to the
+// hand-built geometry, so the game still plays without them.
+// Each model ships as models/<name>.js, a module wrapping the GLB in base64 (artifacts do not serve .glb).
+// Textures go through image elements rather than fetch, so the artifact sandbox does not block them.
+async function loadModel(loader, name) {
+  const { default: b64 } = await import(`./models/${name}.js`);
+  const s = atob(b64), bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return loader.parseAsync(bytes.buffer, '');
+}
+function modelLoader() {
+  const loader = new GLTFLoader();
+  loader.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'image_element_textures' }; });
+  return loader;
+}
+const MDL = await (async () => {
+  const loader = modelLoader(), out = {};
+  const names = ['flier', 'palm-a', 'palm-b', 'fish', 'crystal', 'lighthouse', 'rock-a', 'rock-b', 'rock-c', 'cloud', 'bush'];
+  await Promise.all(names.map(async n => { try { out[n] = await loadModel(loader, n); } catch (e) { console.warn('model failed to load:', n, e && e.message); } }));
+  return out;
+})();
 (function(){
   "use strict";
   const W = 400, H = 225;
@@ -2285,8 +2308,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     }
   }
 
-  const PLAYER_COLORS = { b1:'#ff4757', b2:'#3aa8ff', body:'#e2e2e2', skin:'#f2c8a0', helmet:'#ff4757', wing:'#ffcc33' };
-  const ENEMY_COLORS  = { b1:'#ffd23f', b2:'#ffb347', body:'#6b4a86', skin:'#f2c8a0', helmet:'#3a2451', wing:'#c98a3a' };
+  const PLAYER_COLORS = { b1:'#ff4757', b2:'#3aa8ff', body:'#e2e2e2', skin:'#f2c8a0', helmet:'#ff4757', wing:'#ffcc33', suit:'#e8414f', trim:'#f4f1ea' };
+  const ENEMY_COLORS  = { b1:'#ffd23f', b2:'#ffb347', body:'#6b4a86', skin:'#f2c8a0', helmet:'#3a2451', wing:'#c98a3a', suit:'#7d55a8', trim:'#f2b14a' };
 
   // ---------- 3D scene (three.js, 2.5D) ----------
   // Game coordinates map 1:1 onto the z=0 plane: world x = x - W/2, world y = WATER_Y - y (the sea is y=0).
@@ -2338,6 +2361,24 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   });
   composer.addPass(fxPass);
   composer.addPass(new OutputPass());
+
+  // ---------- models ----------
+  // a copy of a loaded model, standing on its own origin and scaled so one dimension hits a target
+  function fitClone(gltf, size, skinned = false) {
+    const obj = skinned ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+    obj.updateMatrixWorld(true);
+    obj.traverse(o => { if (o.isSkinnedMesh) o.skeleton.update(); });
+    const box = new THREE.Box3().setFromObject(obj, true), sz = box.getSize(new THREE.Vector3());
+    const k = size.height ? size.height / sz.y : size.width ? size.width / sz.x : size.length / sz.z;
+    obj.scale.multiplyScalar(k);
+    obj.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+    obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.isSkinnedMesh) o.frustumCulled = false; } });
+    const g = new THREE.Group(); g.add(obj); g.userData.size = sz.multiplyScalar(k); g.userData.root = obj;
+    return g;
+  }
+  const recolor = (g, map) => g.traverse(o => { if (!o.isMesh) return; o.material = [].concat(o.material).map(m => { const c = map[m.name]; if (!c) return m; const n = m.clone(); for (const k in c) { if (n[k] && n[k].isColor) n[k].set(c[k]); else n[k] = c[k]; } return n; }); if (o.material.length === 1) o.material = o.material[0]; });
+  const ROCKS = ['rock-a', 'rock-b', 'rock-c'].filter(n => MDL[n]);
+  const BUSH_GREEN = { Green: { color: 0x3f8a36 } };
 
   // ---------- textures ----------
   function canvasTex(w, h, draw) {
@@ -2395,18 +2436,25 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   ridge(-520, 0x152843, 70, -10, 11, 1800);
   const lighthouse = new THREE.Group();
   {
+    let lampY = 74;
+    if (MDL.lighthouse) {
+      // Jarlan Perez's lighthouse (CC-BY), on its own rock
+      const lh = fitClone(MDL.lighthouse, { height: 96 }); lh.position.y = -6; lighthouse.add(lh);
+      lampY = lh.userData.size.y * .8 - 6;
+    } else {
     const tower = new THREE.Mesh(new THREE.CylinderGeometry(5, 8, 70, 10), new THREE.MeshStandardMaterial({ color: 0xe8e4dc, roughness: .6 }));
     tower.position.y = 35; lighthouse.add(tower);
     for (let i = 0; i < 3; i++) { const band = new THREE.Mesh(new THREE.CylinderGeometry(6.3 - i * .8, 6.9 - i * .8, 7, 10), new THREE.MeshStandardMaterial({ color: 0xc23a3a, roughness: .6 })); band.position.y = 12 + i * 20; lighthouse.add(band); }
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(4.5, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.6, 1.6) })); lamp.position.y = 74; lighthouse.add(lamp);
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.soft, color: 0xffe6a8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); glow.position.y = 74; glow.scale.setScalar(60); lighthouse.add(glow);
+    }
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(4.5, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.6, 1.6) })); lamp.position.y = lampY; lighthouse.add(lamp);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.soft, color: 0xffe6a8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); glow.position.y = lampY; glow.scale.setScalar(60); lighthouse.add(glow);
     const beamGeo = new THREE.ConeGeometry(26, 520, 16, 1, true).translate(0, -260, 0).rotateZ(Math.PI / 2);
     const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
       uniforms: {}, vertexShader: 'varying float vX; void main(){ vX = position.x; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
       fragmentShader: 'varying float vX; void main(){ float a = smoothstep(520., 0., vX) * .18; gl_FragColor = vec4(vec3(1.,.9,.65) * a, a); }',
     }));
-    beam.position.y = 74; lighthouse.add(beam); lighthouse.userData.beam = beam;
+    beam.position.y = lampY; lighthouse.add(beam); lighthouse.userData.beam = beam;
     const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(30, 0), new THREE.MeshStandardMaterial({ color: 0x1b2638, roughness: 1, flatShading: true }));
     rock.scale.set(1.6, .6, 1); rock.position.y = -4; lighthouse.add(rock);
   }
@@ -2415,12 +2463,21 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   // drifting clouds: clusters of soft sprites behind the playfield
   const clouds = [];
   for (let i = 0; i < 9; i++) {
-    const g = new THREE.Group(); const n = 5 + (Math.random() * 4 | 0);
+    const g = new THREE.Group(); const n = MDL.cloud ? 0 : 5 + (Math.random() * 4 | 0);
+    if (MDL.cloud) {
+      // low-poly clouds, catching the moonlight
+      for (let k = 0; k < 1 + (Math.random() * 2 | 0); k++) {
+        const c = fitClone(MDL.cloud, { width: 50 + Math.random() * 45 });
+        recolor(c, { White: { color: new THREE.Color().setHSL(.62, .28, .34 + Math.random() * .08), emissive: 0x0c1428, roughness: 1 } });
+        c.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+        c.position.set((k - .5) * 60 + Math.random() * 20, Math.random() * 12, Math.random() * 30); c.rotation.y = Math.random() * 6; g.add(c);
+      }
+    }
     for (let k = 0; k < n; k++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.cloud, transparent: true, depthWrite: false, opacity: .42 + Math.random() * .2, color: new THREE.Color().setHSL(.62, .35, .62 + Math.random() * .1) }));
       s.position.set((k - n / 2) * 22 + Math.random() * 10, Math.random() * 14, Math.random() * 10); s.scale.set(70 + Math.random() * 40, 46 + Math.random() * 20, 1); g.add(s);
     }
-    g.position.set(-700 + Math.random() * 1400, 150 + Math.random() * 220, -260 - Math.random() * 380);
+    g.position.set(-700 + Math.random() * 1400, MDL.cloud ? 230 + Math.random() * 220 : 150 + Math.random() * 220, MDL.cloud ? -420 - Math.random() * 380 : -260 - Math.random() * 380);
     g.userData.v = 4 + Math.random() * 6; scene.add(g); clouds.push(g);
   }
 
@@ -2509,7 +2566,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     g.translate(0, -bevel, -depth / 2);
     const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true; scene.add(m); return m;
   }
+  let palmPick = 0;
   function palm(x, y, z, s, lean) {
+    const pm = MDL[palmPick++ % 2 ? 'palm-b' : 'palm-a'] || MDL['palm-a'];
+    if (pm) { const g = fitClone(pm, { height: 46 * s }); g.position.set(x, y - .5, z); g.rotation.set(0, Math.random() * 6, lean * .6); scene.add(g); return g; }
     const g = new THREE.Group(); g.position.set(x, y, z); g.scale.setScalar(s); g.rotation.z = lean;
     let px = 0, py = 0;
     for (let i = 0; i < 6; i++) { const seg = new THREE.Mesh(new THREE.CylinderGeometry(1.5 - i * .12, 1.7 - i * .12, 7, 6), MAT.trunk); seg.position.set(px, py + 3.5, 0); seg.rotation.z = -i * .06; seg.castShadow = true; g.add(seg); px += Math.sin(i * .06) * 3; py += 6.6; }
@@ -2529,15 +2589,34 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
       slab(outer, outerR, top, 3.5, 66, MAT.grass, 1.5);
       const edge = p.x === 0 ? x0 + 14 : x1 - 14, side = p.x === 0 ? -1 : 1;
       palm(edge + side * 2, top, -24, 1.15, side * .18);
-      for (let k = 0; k < 4; k++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(4 + Math.random() * 3, 0), MAT.grassDark); b.position.set(edge + side * (8 + k * 9) - side * 26, top + 2, -26 + Math.random() * 6); b.castShadow = true; scene.add(b); }
+      for (let k = 0; k < 4; k++) {
+        const bx = edge + side * (8 + k * 9) - side * 26, bz = -26 + Math.random() * 6;
+        if (MDL.bush) { const b = fitClone(MDL.bush, { height: 7 + Math.random() * 4 }); recolor(b, BUSH_GREEN); b.position.set(bx, top - .5, bz); b.rotation.y = Math.random() * 6; scene.add(b); continue; }
+        const b = new THREE.Mesh(new THREE.IcosahedronGeometry(4 + Math.random() * 3, 0), MAT.grassDark); b.position.set(bx, top + 2, bz); b.castShadow = true; scene.add(b);
+      }
+      if (ROCKS.length) for (let k = 0; k < 3; k++) { const r = fitClone(MDL[ROCKS[k % ROCKS.length]], { height: 4 + Math.random() * 4 }); r.position.set(edge - side * (30 + k * 14), top - .5, 14 + Math.random() * 10); r.rotation.y = Math.random() * 6; scene.add(r); }
     } else if (p.type === 'cloud') {
       const cx = (x0 + x1) / 2, w = x1 - x0;
       slab(x0, x1, top, 4, 26, MAT.grass, 2);
       const under = new THREE.Mesh(new THREE.ConeGeometry(w * .52, 30, 7, 2), MAT.rock); under.rotation.x = Math.PI; under.scale.set(1, 1, .5);
       under.position.set(cx, top - 19, 0); under.castShadow = under.receiveShadow = true; scene.add(under);
-      for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(new THREE.DodecahedronGeometry(5 + Math.random() * 3, 0), MAT.rockDark); b.position.set(cx + (k - 1) * w * .28, top - 9 - Math.random() * 4, 6); b.castShadow = true; scene.add(b); }
-      for (let k = 0; k < 4; k++) { const c = new THREE.Mesh(crystalGeo, MAT.crystal); c.position.set(cx + (Math.random() - .5) * w * .5, top - 20 - Math.random() * 10, 4 + Math.random() * 4); c.scale.y = 1.8; c.rotation.z = (Math.random() - .5) * .8; scene.add(c); }
-      for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(3 + Math.random() * 2, 0), MAT.grassDark); b.position.set(x0 + 6 + Math.random() * (w - 12), top + 1.5, -9 + Math.random() * 3); scene.add(b); }
+      for (let k = 0; k < 3; k++) {
+        if (ROCKS.length) { const r = fitClone(MDL[ROCKS[k % ROCKS.length]], { height: 9 + Math.random() * 5 }); r.position.set(cx + (k - 1) * w * .28, top - 15 - Math.random() * 4, 6); r.rotation.set(Math.PI, Math.random() * 6, 0); scene.add(r); continue; }
+        const b = new THREE.Mesh(new THREE.DodecahedronGeometry(5 + Math.random() * 3, 0), MAT.rockDark); b.position.set(cx + (k - 1) * w * .28, top - 9 - Math.random() * 4, 6); b.castShadow = true; scene.add(b);
+      }
+      if (MDL.crystal) {
+        // Quaternius mineral clusters hanging under the island, recut in glowing cyan
+        for (let k = 0; k < 2; k++) {
+          const c = fitClone(MDL.crystal, { height: 13 + Math.random() * 5 });
+          recolor(c, { Pink: { color: 0x7ef0ff, emissive: 0x2fd8ff, emissiveIntensity: 1.6, roughness: .2 }, Grey: { color: 0x3d3140 } });
+          c.position.set(cx + (k ? 1 : -1) * w * .18 + (Math.random() - .5) * 6, top - 12, 3 + Math.random() * 4); c.rotation.set(Math.PI, Math.random() * 6, (Math.random() - .5) * .4); scene.add(c);
+        }
+      } else for (let k = 0; k < 4; k++) { const c = new THREE.Mesh(crystalGeo, MAT.crystal); c.position.set(cx + (Math.random() - .5) * w * .5, top - 20 - Math.random() * 10, 4 + Math.random() * 4); c.scale.y = 1.8; c.rotation.z = (Math.random() - .5) * .8; scene.add(c); }
+      for (let k = 0; k < 3; k++) {
+        const bx = x0 + 6 + Math.random() * (w - 12), bz = -9 + Math.random() * 3;
+        if (MDL.bush) { const b = fitClone(MDL.bush, { height: 4.5 + Math.random() * 2.5 }); recolor(b, BUSH_GREEN); b.position.set(bx, top - .3, bz); b.rotation.y = Math.random() * 6; scene.add(b); continue; }
+        const b = new THREE.Mesh(new THREE.IcosahedronGeometry(3 + Math.random() * 2, 0), MAT.grassDark); b.position.set(bx, top + 1.5, bz); scene.add(b);
+      }
     } else {
       const cx = (x0 + x1) / 2, w = x1 - x0;
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(w / 2 + 2, w / 2 - 2, 5, 28), MAT.gold); disc.scale.z = .55; disc.position.set(cx, top - 2.5, 0); disc.castShadow = disc.receiveShadow = true; scene.add(disc);
@@ -2563,9 +2642,23 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   function setStick(m, a, b) { _a.subVectors(b, a); const len = _a.length(); m.position.copy(a).addScaledVector(_a, .5); m.scale.set(1, len, 1); m.quaternion.setFromUnitVectors(UP, _a.normalize()); }
   const matCache = {};
   function mat(hex, opts) { const k = hex + JSON.stringify(opts || {}); return matCache[k] || (matCache[k] = new THREE.MeshStandardMaterial({ color: hex, roughness: .55, ...opts })); }
+  // the fliers are Quaternius's platformer character, rigged and animated, repainted per side
+  function makeRig(g, colors) {
+    const ch = fitClone(MDL.flier, { height: 19 }, true); ch.position.y = -10.6; g.add(ch);
+    recolor(ch, { Main: { color: colors.suit }, Main2: { color: colors.trim } });
+    const mixer = new THREE.AnimationMixer(ch.userData.root);
+    const act = n => { const c = MDL.flier.animations.find(a => a.name.endsWith('|' + n)); if (!c) return null; const a = mixer.clipAction(c); a.play(); a.setEffectiveWeight(0); return a; };
+    const acts = { air: act('Jump_Idle'), run: act('Run'), idle: act('Idle') }, w = { air: 1, run: 0, idle: 0 };
+    const bone = re => { let b = null; ch.traverse(o => { if (!b && o.isBone && re.test(o.name)) b = o; }); return b; };
+    const arms = [[bone(/UpperArm\W?L$/), bone(/LowerArm\W?L$/)], [bone(/UpperArm\W?R$/), bone(/LowerArm\W?R$/)]];
+    mixer.update(Math.random() * 2);
+    return { mixer, acts, w, arms: arms.every(a => a[0] && a[1]) ? arms : null };
+  }
+  const _u = new THREE.Vector3(), _l = new THREE.Vector3();
   function makeModel(colors) {
     const root = new THREE.Group(), g = new THREE.Group(); root.add(g);
     const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+    if (MDL.flier) return makeModelRigged(root, g, colors);
     add(new THREE.CapsuleGeometry(3.3, 3.6, 4, 10), mat(colors.body), 0, -1.6, 0);
     add(new THREE.SphereGeometry(4.1, 16, 12), mat(colors.skin, { roughness: .7 }), 0, 5.6, 0);
     add(new THREE.SphereGeometry(4.45, 16, 10, 0, TAU, 0, Math.PI / 2), mat(colors.helmet, { roughness: .3, metalness: .2 }), 0, 6.1, 0);
@@ -2588,6 +2681,26 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     scene.add(root);
     return root;
   }
+  function makeWingsAndBalloons(g, colors) {
+    const wingShape = new THREE.Shape(); wingShape.moveTo(0, 0); wingShape.quadraticCurveTo(5, 4, 11, 3.5); wingShape.lineTo(9, 1); wingShape.lineTo(10.5, -.5); wingShape.lineTo(7.5, -1.5); wingShape.quadraticCurveTo(3, -2.5, 0, -1.5);
+    const wingGeo = new THREE.ShapeGeometry(wingShape);
+    const wingMat = mat(colors.wing, { side: THREE.DoubleSide, roughness: .5, emissive: colors.wing, emissiveIntensity: .12 });
+    const wings = [-1, 1].map(s => { const pv = new THREE.Group(); pv.position.set(s * 2.2, -1, -3.2); g.add(pv); const w = new THREE.Mesh(wingGeo, wingMat); w.scale.x = s; w.castShadow = true; pv.add(w); return pv; });
+    const balloons = [0, 1].map(i => {
+      const bg = new THREE.Group(); g.add(bg);
+      const m = new THREE.MeshStandardMaterial({ color: i ? colors.b2 : colors.b1, roughness: .16, metalness: 0, envMapIntensity: 1.5, emissive: i ? colors.b2 : colors.b1, emissiveIntensity: .12 });
+      const body = new THREE.Mesh(balloonGeo, m); body.castShadow = true; bg.add(body); bg.add(new THREE.Mesh(knotGeo, m));
+      const str = new THREE.Mesh(stringGeo, stringMat); g.add(str);
+      return { g: bg, str };
+    });
+    return { wings, balloons };
+  }
+  function makeModelRigged(root, g, colors) {
+    const rig = makeRig(g, colors), { wings, balloons } = makeWingsAndBalloons(g, colors);
+    root.userData = { g, arms: [], legs: [], wings, balloons, spin: 0, rig, hands: [new THREE.Vector3(-3, 6.4, 1.8), new THREE.Vector3(3, 6.4, 1.8)] };
+    scene.add(root);
+    return root;
+  }
   const playerModel = makeModel(PLAYER_COLORS);
   const enemyModels = Array.from({ length: 7 }, () => makeModel(ENEMY_COLORS));
   const fallers = [];             // popped rivals tumbling into the sea
@@ -2604,7 +2717,17 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     const flapping = o.wing > 0, a = Math.sin((flapping ? 22 : 6) * t + phase) * (flapping ? .95 : .28);
     u.wings[0].rotation.set(0, -.5, .25 + a); u.wings[1].rotation.set(0, .5, -.25 - a);
     const sw = Math.sin(t * 10 + phase) * (Math.abs(o.vx) > 10 ? .7 : .15);
-    u.legs[0].rotation.x = sw; u.legs[1].rotation.x = -sw;
+    if (u.legs.length) { u.legs[0].rotation.x = sw; u.legs[1].rotation.x = -sw; }
+    const hands = u.hands || HAND;
+    if (u.rig) {
+      // airborne pose in the air, a run along the platforms, idle when standing; blended so changes are smooth
+      const r = u.rig, want = o.onGround ? (Math.abs(o.vx || 0) > 12 ? 'run' : 'idle') : 'air';
+      for (const k in r.acts) { if (!r.acts[k]) continue; r.w[k] += ((k === want ? 1 : 0) - r.w[k]) * Math.min(1, dt * 10); r.acts[k].setEffectiveWeight(r.w[k]); }
+      if (r.acts.run) r.acts.run.setEffectiveTimeScale(.7 + Math.abs(o.vx || 0) / 120);
+      r.mixer.update(dt);
+      // the strings run to the hands: each forearm, extended past the wrist
+      if (r.arms) { model.updateMatrixWorld(true); r.arms.forEach(([up, lo], i) => { up.getWorldPosition(_u); lo.getWorldPosition(_l); _l.addScaledVector(_l.clone().sub(_u), .85); g.worldToLocal(_l); hands[i].copy(_l); }); }
+    }
     const n = Math.max(0, Math.min(2, o.balloons | 0));
     const lift = THREE.MathUtils.clamp(-(o.vy || 0) * .012, -2.2, 2.2);
     u.balloons.forEach((b, i) => {
@@ -2615,15 +2738,22 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
       b.g.position.set(bx + Math.sin(t * 1.7 + i * 2 + phase) * .5, 12.2 - lift + (i ? .7 : 0), bz);
       b.g.rotation.z = Math.sin(t * 2 + i + phase) * .08 + (o.vx || 0) * .002;
       _k.set(b.g.position.x, b.g.position.y - .4, b.g.position.z);
-      setStick(b.str, HAND[n === 1 ? 1 : i], _k);
+      setStick(b.str, hands[n === 1 ? 1 : i], _k);
     });
     // arms reach up towards the strings
-    u.arms.forEach((arm, i) => setStick(arm, _b.set(i ? 3 : -3, 2.2, .4), HAND[i]));
+    u.arms.forEach((arm, i) => setStick(arm, _b.set(i ? 3 : -3, 2.2, .4), hands[i]));
   }
 
   // ---------- fish ----------
   const fishModel = new THREE.Group();
-  {
+  let fishMixer = null;
+  if (MDL.fish) {
+    // a Quaternius clownfish, swimming; turned so its nose points along +x like the old one
+    const f = fitClone(MDL.fish, { length: 26 }, true); f.position.y = -f.userData.size.y / 2; f.rotation.y = Math.PI / 2;
+    const inner = new THREE.Group(); inner.add(f); f.position.set(0, -f.userData.size.y / 2, 0); fishModel.add(inner);
+    fishMixer = new THREE.AnimationMixer(f.userData.root);
+    if (MDL.fish.animations[0]) { const a = fishMixer.clipAction(MDL.fish.animations[0]); a.timeScale = 2.2; a.play(); }
+  } else {
     const fm = new THREE.MeshStandardMaterial({ color: 0x5fd0e8, roughness: .3, metalness: .35, emissive: 0x0e4a58, emissiveIntensity: .4 });
     const body = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), fm); body.scale.set(10, 6, 4.5); body.castShadow = true; fishModel.add(body);
     const tail = new THREE.Mesh(new THREE.ConeGeometry(4.6, 7, 4), fm); tail.rotation.z = Math.PI / 2; tail.scale.z = .3; tail.position.x = -11; fishModel.add(tail);
@@ -2771,6 +2901,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     // fish
     if (fish) {
       fishModel.visible = true;
+      if (fishMixer) fishMixer.update(dt);
       const prog = fish.t / fish.dur, vy = Math.cos(prog * Math.PI);
       fishModel.position.set(wx(fish.x), wy(fish.y), 0);
       fishModel.rotation.set(0, -.55, Math.atan2(vy * 2.2, 1));

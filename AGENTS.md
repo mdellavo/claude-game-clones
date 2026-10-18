@@ -20,7 +20,7 @@ tools/build-site.mjs  assembles _site/ (launcher + every game, Vite games built)
 .github/workflows/    pages.yml runs the build and deploys _site/ on push to main
 ```
 
-Five games are not single files:
+Seven games are not single files:
 
 | Game | Shape |
 | --- | --- |
@@ -28,6 +28,7 @@ Five games are not single files:
 | `radio-rally-3d/` | ES modules under `src/`, no bundler; `tools/` has a build script and headless sims |
 | `tide-breaker/` | ES modules under `src/` plus `style.css`, served straight from the folder |
 | `polygon-wing/` | `index.html` plus plain `core.js` and `game.js`, no modules |
+| `balloon-fight/`, `block-party/` | `index.html` plus `models/*.js`: Poly Pizza GLBs wrapped as base64 modules (`export default '<base64>'`), because artifacts do not serve `.glb`. Each model falls back to the old hand-built geometry if it fails to load |
 
 `node_modules/` and `dist/` are gitignored, so a checkout of `xcom/` or `zelda/` needs
 `npm install` before it runs.
@@ -94,7 +95,8 @@ Each game is published at its own claude.ai URL. Keep those URLs out of the READ
 find a game's URL with the Artifact tool's `list` action (artifacts are titled after the game).
 
 - Republish to the **same** URL after changing a game, so the published copy stays current.
-- A game with extra files (Polygon Wing) publishes them alongside the page.
+- A game with extra files (Polygon Wing's scripts, the `models/` folders of Balloon Fight and Block Party) publishes them alongside the page.
+- Poly Pizza models are CC0 or CC-BY. Credit every CC-BY model in the README's Model credits table.
 - Artifacts published from an earlier session must be read before they can be republished.
   A published page is wrapped in claude.ai's own `<html><head>…<body>`; strip that wrapper
   before republishing a patched copy, or the page ends up nested inside itself.
