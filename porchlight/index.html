@@ -784,7 +784,44 @@ function along(gltf, axis, length, opts = {}) {
   const xLong = b.max.x - b.min.x > b.max.z - b.min.z, turn = (axis === 'x') !== xLong ? Math.PI / 2 : 0;
   return fitBaked(raw, axis === 'x' ? { width: length, rotY: turn } : { length, rotY: turn });
 }
-const MDL = await loadModels(['rock', 'rock-b', 'log', 'truck', 'dog']);
+const MDL = await loadModels(['rock', 'rock-b', 'log', 'truck', 'dog', 'alien']);
+// the grey alien is one static mesh; its arms are split off at the shoulders so they keep their swing and their aim
+const ALIEN = MDL.alien ? (() => {
+  let src = null; MDL.alien.scene.traverse(o => { if (o.isMesh && !src) src = o; });
+  MDL.alien.scene.updateMatrixWorld(true);
+  const g = (src.geometry.index ? src.geometry.toNonIndexed() : src.geometry.clone()).applyMatrix4(src.matrixWorld);
+  g.computeBoundingBox(); const bb = g.boundingBox, k = 2.25 / (bb.max.y - bb.min.y);
+  g.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2).scale(k, k, k);
+  const pos = g.attributes.position, attrs = Object.keys(g.attributes), SH = 1.62, SX = 0.21;
+  const parts = { body: [], L: [], R: [] };
+  for (let t = 0; t < pos.count; t += 3) {
+    // the arms hang out in an A, so the cut widens towards the hands and leaves the outer thighs on the body
+    const cut = (i) => SX + 0.1 * (SH - pos.getY(i)) / (SH - 0.3), cy = (pos.getY(t) + pos.getY(t + 1) + pos.getY(t + 2)) / 3;
+    const side = [t, t + 1, t + 2].every(i => pos.getX(i) < -cut(i)) ? 'L' : [t, t + 1, t + 2].every(i => pos.getX(i) > cut(i)) ? 'R' : 'body';
+    parts[cy < SH && cy > 0.3 ? side : 'body'].push(t);   // above the feet, which splay out as far as the hands
+  }
+  const build = (tris) => {
+    const out = new THREE.BufferGeometry();
+    for (const a of attrs) { const s = g.attributes[a], arr = new Float32Array(tris.length * 3 * s.itemSize); let o = 0; for (const t of tris) for (let v = t; v < t + 3; v++) for (let c = 0; c < s.itemSize; c++) arr[o++] = s.array[v * s.itemSize + c]; out.setAttribute(a, new THREE.BufferAttribute(arr, s.itemSize)); }
+    return out;
+  };
+  const arm = (tris) => {
+    const geo = build(tris); geo.computeBoundingBox(); const b = geo.boundingBox.clone();
+    // pivot at the shoulder: the middle of the arm's topmost vertices
+    const q = geo.attributes.position, pivot = new THREE.Vector3(); let m = 0;
+    for (let i = 0; i < q.count; i++) if (q.getY(i) > b.max.y - 0.04) { pivot.x += q.getX(i); pivot.z += q.getZ(i); m++; }
+    pivot.divideScalar(m); pivot.y = b.max.y - 0.02;
+    geo.translate(-pivot.x, -pivot.y, -pivot.z);
+    // the hand: the middle of the arm's lowest few centimetres, where the aiming tip glows
+    const p = geo.attributes.position, hand = new THREE.Vector3(); let n = 0;
+    for (let i = 0; i < p.count; i++) if (p.getY(i) < b.min.y - pivot.y + 0.08) { hand.x += p.getX(i); hand.y += p.getY(i); hand.z += p.getZ(i); n++; }
+    return { geo, pivot, hand: hand.divideScalar(n || 1) };
+  };
+  const mat = new THREE.MeshStandardMaterial({ map: src.material.map || null, color: src.material.map ? 0xffffff : 0x9aa89c, roughness: 0.6, emissive: 0x0b1510 });
+  return { body: build(parts.body), L: arm(parts.L), R: arm(parts.R), mat };
+})() : null;
+// where the glowing eye shells sit on the model's face (front is +z)
+const ALIEN_EYE = { x: 0.08, y: 2.012, z: 0.172 };
 // a Quaternius boulder in place of the icosahedron, sunk a little so it reads as bedded in the needles
 const rockGeo = MDL.rock ? (() => { const g = bakedGeo(MDL.rock, { width: 2 }, { lift: .5 }); g.translate(0, -.1, 0); return g; })() : rockGeo0;
 const shroomGeo = merge([P(G.cyl, 0xcfd8c0, 0, 0.12, 0, 0.03, 0.24, 0.03), P(new THREE.SphereGeometry(1, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), 0xffffff, 0, 0.22, 0, 0.1, 0.07, 0.1)]);
@@ -973,19 +1010,28 @@ function buildAlien(x, z) {
   const g = new THREE.Group();
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x020303, roughness: 0.05, metalness: 0.6, emissive: 0x2aff7a, emissiveIntensity: 0.35 });
   const mk = (geo, mat, px, py, pz, sx, sy, sz, rx = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.scale.set(sx, sy, sz); m.rotation.set(rx, 0, rz); m.castShadow = true; g.add(m); return m; };
-  mk(capG, alienSkin, 0, 1.08, 0, 0.2, 0.28, 0.16);
-  mk(capG, alienSkin, 0, 1.52, 0, 0.05, 0.08, 0.05);
-  mk(G.sph, alienSkin, 0, 1.88, 0.02, 0.36, 0.42, 0.38);
-  mk(G.sph, alienSkin, 0, 1.72, 0.14, 0.17, 0.2, 0.2);
-  for (const s of [-1, 1]) {
-    const e = mk(G.sph, eyeMat, s * 0.15, 1.86, 0.3, 0.12, 0.065, 0.05, 0, s * -0.45);
-    e.rotation.y = s * 0.35;
-    mk(capG, alienSkin, s * 0.1, 0.42, 0, 0.055, 0.34, 0.055);
+  let armL, armR, hand = new V3(0, -0.9, 0);
+  if (ALIEN) {
+    // the Poly Pizza grey: textured body plus the two split-off arms; the glowing eyes sit over its painted ones
+    const body = new THREE.Mesh(ALIEN.body, ALIEN.mat); body.castShadow = true; g.add(body);
+    for (const s of [-1, 1]) { const e = mk(G.sph, eyeMat, s * ALIEN_EYE.x, ALIEN_EYE.y, ALIEN_EYE.z, 0.056, 0.028, 0.02, 0, s * 0.4); e.rotation.y = s * 0.4; }
+    [armL, armR] = [ALIEN.L, ALIEN.R].map(A => { const a = new THREE.Group(); a.position.copy(A.pivot); const m = new THREE.Mesh(A.geo, ALIEN.mat); m.castShadow = true; a.add(m); g.add(a); return a; });
+    hand = ALIEN.R.hand;
+  } else {
+    mk(capG, alienSkin, 0, 1.08, 0, 0.2, 0.28, 0.16);
+    mk(capG, alienSkin, 0, 1.52, 0, 0.05, 0.08, 0.05);
+    mk(G.sph, alienSkin, 0, 1.88, 0.02, 0.36, 0.42, 0.38);
+    mk(G.sph, alienSkin, 0, 1.72, 0.14, 0.17, 0.2, 0.2);
+    for (const s of [-1, 1]) {
+      const e = mk(G.sph, eyeMat, s * 0.15, 1.86, 0.3, 0.12, 0.065, 0.05, 0, s * -0.45);
+      e.rotation.y = s * 0.35;
+      mk(capG, alienSkin, s * 0.1, 0.42, 0, 0.055, 0.34, 0.055);
+    }
+    armL = new THREE.Group(); armL.position.set(-0.24, 1.38, 0); g.add(armL);
+    armR = new THREE.Group(); armR.position.set(0.24, 1.38, 0); g.add(armR);
+    for (const a of [armL, armR]) { const m = new THREE.Mesh(capG, alienSkin); m.scale.set(0.04, 0.34, 0.04); m.position.y = -0.4; m.castShadow = true; a.add(m); const h = new THREE.Mesh(G.sph, alienSkin); h.scale.set(0.06, 0.09, 0.06); h.position.y = -0.84; a.add(h); }
   }
-  const armL = new THREE.Group(); armL.position.set(-0.24, 1.38, 0); g.add(armL);
-  const armR = new THREE.Group(); armR.position.set(0.24, 1.38, 0); g.add(armR);
-  for (const a of [armL, armR]) { const m = new THREE.Mesh(capG, alienSkin); m.scale.set(0.04, 0.34, 0.04); m.position.y = -0.4; m.castShadow = true; a.add(m); const h = new THREE.Mesh(G.sph, alienSkin); h.scale.set(0.06, 0.09, 0.06); h.position.y = -0.84; a.add(h); }
-  const tip = new THREE.Mesh(G.sph, new THREE.MeshBasicMaterial({ color: 0xff3b4a })); tip.scale.setScalar(0.07); tip.position.y = -0.9; tip.visible = false; armR.add(tip);
+  const tip = new THREE.Mesh(G.sph, new THREE.MeshBasicMaterial({ color: 0xff3b4a })); tip.scale.setScalar(0.07); tip.position.copy(hand); tip.visible = false; armR.add(tip);
   const sight = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff2a3a, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   sight.visible = false; world.add(sight);
   const y = H(x, z); g.position.set(x, y, z); world.add(g);
@@ -1197,7 +1243,7 @@ function updateAliens(dt) {
       faceYaw = toP; a.t -= dt; chaseNear++;
       const kk = 1 - Math.exp(-2.6 * dt); a.aim.x = lerp(a.aim.x, pl.x, kk); a.aim.z = lerp(a.aim.z, pl.z, kk); a.aim.y = lerp(a.aim.y, pl.y - 0.35, kk);
       a.tip.visible = true; a.eyeMat.emissive.setHex(0xff2030); a.eyeMat.emissiveIntensity = 1.4;
-      a.armR.getWorldPosition(_a); _a.y -= 0.85; aimBeam(a, _a, a.aim, 0.02, 0.35 + 0.4 * Math.sin(gameT * 30) ** 2);
+      a.tip.getWorldPosition(_a); aimBeam(a, _a, a.aim, 0.02, 0.35 + 0.4 * Math.sin(gameT * 30) ** 2);
       if (a.t <= 0) fire(a);
     } else if (a.state === 'flee') {
       a.t -= dt; const src = af ? af.p : pl; faceYaw = Math.atan2(a.x - src.x, a.z - src.z); spd = NT.spd * 0.9;
@@ -1229,7 +1275,7 @@ function aimBeam(a, from, to, r, op) {
   return L;
 }
 function fire(a) {
-  a.armR.getWorldPosition(_a); _a.y -= 0.85;
+  a.tip.getWorldPosition(_a);
   const L = aimBeam(a, _a, a.aim, 0.09, 1);
   a.fireT = 0.2; a.state = 'chase'; a.cd = rr(NT.cd[0], NT.cd[1]);
   sfx.zap(a.x, a.z);
