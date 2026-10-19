@@ -2,6 +2,11 @@
 
 Every change to `porchlight/`, newest first, generated from the git history by `tools/changelog.mjs`.
 
+## 2026-10-19
+
+- **Use the Poly Pizza grey alien in Porchlight** `58a2ff7`
+  The aliens are now Poly by Google's "Alien" (CC-BY, credited in the README), its 2048px texture shrunk to 512 so the model ships at 87 KB. The model is one static mesh, so its arms are cut away at the shoulders and hung in the existing arm groups: they still swing while walking and the right arm still raises to aim. The aiming tip and beam now start at the model's hand. The glowing eye shells sit over the painted eyes, so they still turn green when hunting and red when aiming. If the model fails to load, the hand-built alien is used as before.
+
 ## 2026-10-18
 
 - **Keep the changelog's date headings bold in every game** `ae5a3e0`
