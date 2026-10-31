@@ -2,6 +2,10 @@
 
 Every change to `powder-chute/`, newest first, generated from the git history by `tools/changelog.mjs`.
 
+## 2026-10-31
+
+- **Add per-game model credits viewable from each game's devkit menu** `7cd573c`
+
 ## 2026-10-18
 
 - **Use the Poly Pizza dog model in Powder Chute** `80c93d3`

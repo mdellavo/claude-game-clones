@@ -2,6 +2,10 @@
 
 Every change to `sundown-highway/`, newest first, generated from the git history by `tools/changelog.mjs`.
 
+## 2026-10-31
+
+- **Add per-game model credits viewable from each game's devkit menu** `7cd573c`
+
 ## 2026-10-18
 
 - **Keep the changelog's date headings bold in every game** `ae5a3e0`
