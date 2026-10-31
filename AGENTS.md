@@ -14,11 +14,13 @@ Each game was written from a single prompt, quoted in the README's Prompt column
 <game>/index.html     the game page
 <game>/models/        Poly Pizza models as base64 JS modules (xcom and zelda keep them under public/)
 <game>/CHANGELOG.md   generated from git history (xcom and zelda: public/CHANGELOG.md)
+<game>/CREDITS.md     generated list of the game's models and their authors (xcom and zelda: public/)
 screenshots/          <game>-1.jpg, -2.jpg, -3.jpg — used by the README table
 README.md             one table row per game: name, description, prompt, screenshots
 index.html            launcher page for GitHub Pages; builds its tiles from the README table at runtime,
                       and index.html#<folder> opens a single game's page instead of the grid
 tools/changelog.mjs   regenerates every CHANGELOG.md from git log
+tools/credits.mjs     regenerates every CREDITS.md from the model files and tools/model-credits.json
 tools/build-site.mjs  assembles _site/ (launcher + every game, Vite games built) for Pages
 .github/workflows/    pages.yml runs the build and deploys _site/ on push to main
 ```
@@ -88,6 +90,15 @@ detail comes from the commit body line that starts with the game's name (`- Rotg
 or from the body's first paragraph when the commit touched only that game. Name each game
 that way in a commit that touches several of them.
 
+## Model credits
+
+Each game shows its `CREDITS.md` from the devkit menu next to Changelog, or from `DBG.credits(true)`.
+`node tools/credits.mjs` writes it from the game's model files: each `models/<name>.js` must open
+with a comment naming its Poly Pizza ID (`// <name>.glb (Poly Pizza <id>, see the README's Model
+credits), …`), and `tools/model-credits.json` maps that ID to the title, author and licence shown on
+the model's Poly Pizza page. When adding a model, add its row there, run the script (it fails on a
+model it cannot credit), and add CC-BY models to the README's Model credits table too.
+
 ## Running and testing
 
 ```sh
@@ -109,7 +120,7 @@ Each game is published at its own claude.ai URL. Keep those URLs out of the READ
 find a game's URL with the Artifact tool's `list` action (artifacts are titled after the game).
 
 - Republish to the **same** URL after changing a game, so the published copy stays current.
-- A game with extra files (its `models/` folder, `CHANGELOG.md`, Polygon Wing's scripts) publishes them alongside the page.
+- A game with extra files (its `models/` folder, `CHANGELOG.md`, `CREDITS.md`, Polygon Wing's scripts) publishes them alongside the page.
 - Poly Pizza models are CC0 or CC-BY. Credit every CC-BY model in the README's Model credits table.
 - Artifacts published from an earlier session must be read before they can be republished.
   A published page is wrapped in claude.ai's own `<html><head>…<body>`; strip that wrapper

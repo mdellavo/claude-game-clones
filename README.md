@@ -95,7 +95,7 @@ Terraform state is kept locally in `infra/leaderboard/terraform.tfstate` and is 
 
 ## Model credits
 
-Most games load low-poly models from [Poly Pizza](https://poly.pizza), kept in each game's `models/` folder (X-COM's in `public/models/`). Most are CC0 and need no credit; these are CC-BY and are credited here:
+Most games load low-poly models from [Poly Pizza](https://poly.pizza), kept in each game's `models/` folder (X-COM's in `public/models/`). Each game lists all of its models, with authors and licences, under Credits in its `⋯` menu. Most are CC0; these are CC-BY:
 
 | Game | Model | Author | Licence |
 | --- | --- | --- | --- |

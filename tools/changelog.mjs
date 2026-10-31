@@ -29,7 +29,7 @@ for (const g of games) {
   if (vite) mkdirSync(join(root, g, 'public'), { recursive: true });
   const out = join(root, g, vite ? 'public' : '', 'CHANGELOG.md');
   // the README rows and screenshots are shared files, so only commits inside the folder count
-  const raw = git('log', '--no-merges', '--date=short', '--format=%h%x1f%ad%x1f%s%x1f%b%x1e', '--', g, `:(exclude)${g}/CHANGELOG.md`, `:(exclude)${g}/public/CHANGELOG.md`);
+  const raw = git('log', '--no-merges', '--date=short', '--format=%h%x1f%ad%x1f%s%x1f%b%x1e', '--', g, `:(exclude)${g}/CHANGELOG.md`, `:(exclude)${g}/public/CHANGELOG.md`, `:(exclude)${g}/CREDITS.md`, `:(exclude)${g}/public/CREDITS.md`);
   const commits = raw.split('\x1e').map((s) => s.trim()).filter(Boolean).map((s) => { const [hash, date, subject, body = ''] = s.split('\x1f'); return { hash, date, subject, body }; });
   const nameRe = new RegExp(`^([-*] )?(?:${escapeRe(name)}|${escapeRe(name.replace(/ '\d\d$/, ''))}|${escapeRe(g)})[^:]*:\\s*(.+)$`, 'i');
   const lines = [`# ${name} changelog`, '', `Every change to \`${g}/\`, newest first, generated from the git history by \`tools/changelog.mjs\`.`, ''];
