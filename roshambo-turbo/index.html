@@ -175,6 +175,30 @@ button:focus-visible{outline:3px solid var(--cyan);outline-offset:3px}
 #contNum{font-size:clamp(90px,22vw,200px)}
 #sEnd .card,#sHelp .card{display:flex;flex-direction:column;gap:12px}
 #sEnd{justify-content:flex-end}
+/* online leaderboard: end-of-run board and the title-screen viewer */
+#sOver .card{display:flex;flex-direction:column;gap:12px;text-align:center}
+#lb{display:flex;flex-direction:column;gap:8px;text-align:left}
+#lbForm{display:flex;gap:8px;margin:0}
+#lbName{flex:1;min-width:0;font:600 16px var(--body);color:var(--chrome);background:rgba(0,0,0,.45);border:2px solid var(--edge);padding:8px 10px;user-select:text;-webkit-user-select:text;text-transform:uppercase}
+#lbName:focus{outline:none;border-color:var(--cyan)}
+#lbSend{font-size:15px;padding:9px 16px 7px}
+#lbSend:disabled{opacity:.4;cursor:default}
+#lbNote{margin:0;font-size:14px;color:var(--dim)}
+#lbNote:empty{display:none}
+#lbTable{width:100%;border-collapse:collapse;font-size:15px;font-variant-numeric:tabular-nums}
+#lbTable td{padding:2px 4px}#lbTable td:first-child{width:2.2em;color:var(--dim)}#lbTable td:last-child{text-align:right;color:var(--gold)}
+#lbTable tr.me td{color:var(--cyan)}
+#lbOpenBtn[hidden],#lbView[hidden]{display:none!important}
+#lbView{position:fixed;inset:0;z-index:1000;display:flex;padding:16px;overflow:auto;background:rgba(5,4,16,.74);touch-action:pan-y}
+#lbView .lbv{width:min(380px,100%);margin:auto;display:flex;flex-direction:column;gap:12px;text-align:left}
+#lbView .lbv-h{font-size:22px}
+#lbView .lbv-n{font-size:14px;color:var(--dim);margin:0}
+#lbView .lbv-n:empty{display:none}
+#lbViewList{list-style:none;margin:0;padding:0;font-size:16px;line-height:1.55;font-variant-numeric:tabular-nums}
+#lbViewList li{display:grid;grid-template-columns:2.2em 1fr auto;gap:10px}
+#lbViewList li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:pre}
+#lbViewList li span:last-child{color:var(--gold)}
+#lbViewClose{align-self:flex-start}
 #endTitle{font-size:clamp(36px,8vw,84px);text-align:center}
 #endText{font:600 clamp(15px,2.2vw,19px)/1.5 var(--body);max-width:60ch}
 #endScore{font:600 14px/1.4 var(--body);letter-spacing:.14em;color:var(--dim);font-variant-numeric:tabular-nums}
@@ -387,7 +411,7 @@ button:focus-visible{outline:3px solid var(--cyan);outline-offset:3px}
 <div class="screen" id="sTitle">
   <div id="logo"><span class="a hot">ROSHAMBO</span><span class="b cold">TURBO</span><span class="c">WORLD HAND CHAMPIONSHIP · 1991</span></div>
   <div id="press">PRESS START</div>
-  <div id="tMenu"><button class="btn" id="startBtn" type="button">ARCADE MODE</button><button class="btn alt" id="helpBtn" type="button">HOW TO PLAY</button></div>
+  <div id="tMenu"><button class="btn" id="startBtn" type="button">ARCADE MODE</button><button class="btn alt" id="helpBtn" type="button">HOW TO PLAY</button><button class="btn alt" id="lbOpenBtn" type="button" hidden>LEADERBOARD</button></div>
   <div id="tOpts">
     <span class="lbl">Difficulty</span>
     <div class="seg" id="diffSeg"><button type="button" data-d="0">EASY</button><button type="button" data-d="1">NORMAL</button><button type="button" data-d="2">HARD</button></div>
@@ -457,7 +481,30 @@ button:focus-visible{outline:3px solid var(--cyan);outline-offset:3px}
     <div id="endTitle" class="hot">CHAMPION</div>
     <div id="endText"></div>
     <div id="endScore"></div>
+    <div id="endSlot"><div id="lb" hidden>
+      <form id="lbForm"><input id="lbName" type="text" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" placeholder="YOUR NAME" aria-label="Name for the online board"><button class="btn" id="lbSend" type="submit">SUBMIT</button></form>
+      <p id="lbNote"></p>
+      <table id="lbTable" hidden></table>
+    </div></div>
     <div class="row"><button class="btn" id="endGo" type="button">PLAY AGAIN</button></div>
+  </div>
+</div>
+
+<div class="screen" id="sOver" hidden>
+  <div class="card">
+    <div class="hot" style="font-size:clamp(34px,7vw,64px)">GAME OVER</div>
+    <div id="overScore"></div>
+    <div id="overSlot"></div>
+    <div class="row"><button class="btn" id="overGo" type="button">TITLE</button></div>
+  </div>
+</div>
+
+<div id="lbView" role="dialog" aria-modal="true" aria-label="Leaderboard" hidden>
+  <div class="card lbv">
+    <div class="hot lbv-h">WORLD RANKINGS</div>
+    <p class="lbv-n" id="lbViewNote" aria-live="polite"></p>
+    <ol id="lbViewList"></ol>
+    <button class="btn alt" id="lbViewClose" type="button">CLOSE</button>
   </div>
 </div>
 
@@ -1735,13 +1782,19 @@ function goContinue() {
   G.mode = 'continue'; show('sCont'); playMusic(null); let n = 9; $('contNum').textContent = n; say('Continue?');
   clearInterval(contTimer); contTimer = setInterval(() => { if (G.paused) return; n--; $('contNum').textContent = Math.max(0, n); sfx('blip'); if (n < 0) { clearInterval(contTimer); gameOver(); } }, 1000);
 }
-function gameOver() { clearInterval(contTimer); updateHi(); DBG.log('game over, score', G.score); goTitle(); }
+function gameOver() {
+  clearInterval(contTimer); updateHi(); DBG.log('game over, score', G.score);
+  if (!LB_URL || G.score <= 0) { goTitle(); return; }
+  // a last look at the score, and a chance to post it, before the title screen
+  G.mode = 'over'; show('sOver'); $('overScore').innerHTML = `SCORE <b>${fmt(G.score)}</b> · HIGH SCORE <b>${fmt(G.hi)}</b>`;
+  $('overSlot').appendChild($('lb')); lbOpen(G.score);
+}
 function goEnding() {
   G.mode = 'ending'; CAM.mode = 'fight'; CAM.zoom = 0.8; CAM.tx = 0; const d = FIGHTERS[G.player];
   buildStage(d.stage); playMusic('theme'); stageKit(stageGroup, stageU).weather('confetti', 500);
   fighter(G.player).then((f) => { if (G.mode !== 'ending') return; f.g.position.set(0, 0, 0); f.g.rotation.y = 0.2; f.play('Wave'); setActors([f]); });
   $('endText').textContent = d.end; $('endScore').innerHTML = `SCORE <b>${fmt(G.score)}</b> · HIGH SCORE <b>${fmt(Math.max(G.hi, G.score))}</b>${G.continues ? ` · CONTINUES ${G.continues}` : ' · NO CONTINUES'}`;
-  updateHi(); show('sEnd'); say('Congratulations. You are the champion.'); DBG.log('champion', G.player, G.score);
+  updateHi(); show('sEnd'); $('endSlot').appendChild($('lb')); lbOpen(G.score); say('Congratulations. You are the champion.'); DBG.log('champion', G.player, G.score);
 }
 
 // ---------- pause ----------
@@ -1756,6 +1809,7 @@ const KEYMAP = { KeyA: 0, KeyJ: 0, Digit1: 0, ArrowLeft: 0, KeyS: 1, KeyK: 1, Di
 const SUPERKEYS = ['Space', 'KeyW', 'ArrowUp', 'KeyI'];
 function menuKey(code) {
   const enter = code === 'Enter' || code === 'Space';
+  if (!$('lbView').hidden) return;
   if (G.mode === 'title' && G.screen === 'sTitle' && enter) goSelect();
   else if (G.screen === 'sHelp' && (enter || code === 'Escape')) { show('sTitle'); }
   else if (G.mode === 'select') {
@@ -1768,6 +1822,7 @@ function menuKey(code) {
   else if (G.mode === 'post' && enter) $('qGo').click();
   else if (G.mode === 'continue') { if (enter) $('contYes').click(); else if (code === 'Escape') $('contNo').click(); }
   else if (G.mode === 'ending' && enter) $('endGo').click();
+  else if (G.mode === 'over' && enter) $('overGo').click();
 }
 addEventListener('keydown', (e) => {
   const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
@@ -1797,6 +1852,85 @@ $('qGo').onclick = () => { sfx('confirm'); const a = G.after; G.after = null; a 
 $('contYes').onclick = () => { clearInterval(contTimer); G.continues++; G.score = 0; sfx('coin'); goVs(); };
 $('contNo').onclick = () => gameOver();
 $('endGo').onclick = () => goTitle();
+$('overGo').onclick = () => goTitle();
+
+// ---------- online leaderboard (see infra/leaderboard); empty LB_URL turns it off ----------
+const LB_URL = 'https://kdij2iboa4nqg63gplkodm2qbi0rlmst.lambda-url.us-east-1.on.aws/';
+const LB_GAME = 'roshambo-turbo';
+const fmtN = (n) => (Number(n) || 0).toLocaleString();
+async function lbFetch(entry) {
+  if (!LB_URL) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const res = await fetch(entry ? LB_URL : LB_URL + '?game=' + LB_GAME, entry ? {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: LB_GAME, ...entry }), signal: ctl.signal,
+    } : { signal: ctl.signal });
+    if (!res.ok) DBG.warn('leaderboard', entry ? 'submit' : 'fetch', 'HTTP', res.status);
+    return res.ok ? await res.json() : null;
+  } catch (err) {
+    DBG.warn('leaderboard', entry ? 'submit' : 'fetch', 'failed:', err && (err.name === 'AbortError' ? 'timeout' : err.message));
+    return null;
+  } finally { clearTimeout(timer); }
+}
+// Leaderboard button on the title screen: the top 10 in a pop-up
+(() => {
+  const btn = $('lbOpenBtn'), view = $('lbView');
+  if (!LB_URL) return;
+  const list = $('lbViewList'), note = $('lbViewNote'), close = $('lbViewClose');
+  const shut = () => { view.hidden = true; btn.focus({ preventScroll: true }); };
+  btn.hidden = false;
+  btn.addEventListener('click', async () => {
+    view.hidden = false; list.textContent = ''; note.textContent = 'Loading…'; close.focus({ preventScroll: true });
+    const d = await lbFetch();
+    if (view.hidden) return;
+    if (!d || !Array.isArray(d.scores)) { note.textContent = 'Leaderboard offline.'; return; }
+    DBG.log('leaderboard viewer', d.scores.length, 'scores');
+    note.textContent = d.scores.length ? '' : 'No scores yet.';
+    d.scores.slice(0, 10).forEach((s, i) => {
+      const li = document.createElement('li');
+      for (const t of [i + 1 + '.', String(s.name), fmtN(s.score)]) { const sp = document.createElement('span'); sp.textContent = t; li.appendChild(sp); }
+      list.appendChild(li);
+    });
+  });
+  close.addEventListener('click', shut);
+  view.addEventListener('click', e => { if (e.target === view) shut(); });
+  addEventListener('keydown', e => { if (!view.hidden && e.key === 'Escape') { e.stopImmediatePropagation(); shut(); } }, true);
+})();
+// end-of-run board (game over or champion); score is points, higher is better
+let lbRun = 0, lbScore = null, lbSent = false;
+function lbRender(scores, rank) {
+  const tb = $('lbTable'); tb.textContent = '';
+  (Array.isArray(scores) ? scores : []).slice(0, 10).forEach((sc, i) => {
+    const tr = tb.insertRow(); if (i + 1 === rank) tr.className = 'me';
+    tr.insertCell().textContent = i + 1; tr.insertCell().textContent = String(sc.name); tr.insertCell().textContent = fmtN(sc.score);
+  });
+  tb.hidden = !tb.rows.length;
+}
+function lbOpen(score) {
+  if (!LB_URL) return;
+  const run = ++lbRun; lbScore = score > 0 ? score : null; lbSent = false;
+  $('lb').hidden = false; $('lbForm').hidden = lbScore == null; $('lbSend').disabled = false; $('lbName').value = String(store.get('rt-name', '')).slice(0, 12);
+  $('lbNote').textContent = 'Loading the board…'; lbRender([]);
+  lbFetch().then(d => {
+    if (run !== lbRun || lbSent) return;
+    if (d) { lbRender(d.scores); $('lbNote').textContent = d.scores && d.scores.length ? '' : 'No scores yet. Be the first.'; } else $('lbNote').textContent = 'Board offline.';
+  });
+}
+$('lbForm').addEventListener('submit', e => {
+  e.preventDefault(); if (lbSent || lbScore == null) return;
+  const name = $('lbName').value.trim().toUpperCase().slice(0, 12); if (!name) { $('lbName').focus(); return; }
+  const run = lbRun, score = lbScore; lbSent = true; $('lbSend').disabled = true; store.set('rt-name', name); $('lbNote').textContent = 'Sending…';
+  lbFetch({ name, score }).then(d => {
+    if (run !== lbRun) return;
+    if (d) DBG.log('score submitted', score, 'rank', d.rank ?? 'none');
+    if (!d) { lbSent = false; $('lbSend').disabled = false; $('lbNote').textContent = 'Board offline. Your score was not sent.'; return; }
+    $('lbForm').hidden = true; lbRender(d.scores, d.rank);
+    $('lbNote').textContent = d.rank ? `You are #${d.rank} on the board with ${fmtN(score)}.` : `${fmtN(score)} did not make the board.`;
+  });
+});
+for (const ev of ['keydown', 'keyup', 'keypress']) $('lbName').addEventListener(ev, e => e.stopPropagation());
 $('sLadder').onclick = $('sVs').onclick = () => { if (G.wait) G.wait.t = Math.min(G.wait.t, 0); };
 document.querySelectorAll('#diffSeg button').forEach((b) => b.onclick = () => { G.diff = +b.dataset.d; store.set('rt-diff', G.diff); syncDiff(); sfx('blip'); });
 const syncDiff = () => document.querySelectorAll('#diffSeg button').forEach((b) => b.classList.toggle('on', +b.dataset.d === G.diff));
