@@ -2,6 +2,11 @@
 
 Every change to `roshambo-turbo/`, newest first, generated from the git history by `tools/changelog.mjs`.
 
+## 2026-11-06
+
+- **Put Roshambo Turbo and Updraft Isle on the online leaderboard** `c1ef571`
+  A GAME OVER screen now follows a declined continue and offers to post the run's score, the champion ending offers the same, and the title screen gains a Leaderboard button with the top 10.
+
 ## 2026-10-28
 
 - **Add Roshambo Turbo, a rock-paper-scissors arcade fighter** `60d8690`
